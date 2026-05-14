@@ -1,0 +1,43 @@
+name: CI — Mobile
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/ci-mobile.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint · Typecheck · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter mobile lint
+
+      - name: Typecheck
+        run: pnpm --filter mobile typecheck
+
+      - name: Test
+        run: pnpm --filter mobile test
