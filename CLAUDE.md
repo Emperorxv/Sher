@@ -89,3 +89,5 @@ When the user says "start Phase N", do the following:
 - Ask me a single concrete question. Do not produce a long list of clarifying questions.
 - Do not invent product behavior to fill ambiguity. The doc + me are the source of truth.
 - If a library API has changed and the doc is out of date, point it out — don't silently work around it.
+
+- **Do not push to the GitHub remote.** Commit locally only. I push from my own terminal after reviewing each deliverable.
