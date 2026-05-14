@@ -1,0 +1,30 @@
+{
+  "name": "sher",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@sher/config": "workspace:*",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": ["eslint --fix", "prettier --write"],
+    "*.{json,md,yaml,yml}": ["prettier --write"]
+  }
+}
