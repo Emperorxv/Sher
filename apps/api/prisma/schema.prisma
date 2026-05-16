@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum RoomStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+  EXPIRED
+  ARCHIVED
+}
+
+enum Role {
+  HOST
+  COHOST
+  GUEST
+}
+
+enum PhotoStatus {
+  UPLOADING
+  READY
+  FAILED
+  DELETED
+  FLAGGED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  FLUTTERWAVE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentPurpose {
+  BASE_UNLOCK
+  MEMBER_UNLOCK
+  RETENTION_EXTENSION
+}
+
+enum Platform {
+  IOS
+  ANDROID
+}
+
+enum UnlockState {
+  LOCKED
+  UNLOCKED
+  EXEMPT
+}
+
+model User {
+  id          String     @id @default(cuid())
+  phone       String     @unique // E.164 e.g. +2348012345678
+  email       String?    @unique
+  displayName String?
+  avatarUrl   String?
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+
+  hostedRooms  Room[]          @relation("RoomHost")
+  memberships  Membership[]
+  photos       Photo[]
+  payments     Payment[]
+  deviceTokens DeviceToken[]
+  reactions    PhotoReaction[]
+
+  @@index([phone])
+}
+
+model Room {
+  id                   String     @id @default(cuid())
+  name                 String
+  hostId               String
+  host                 User       @relation("RoomHost", fields: [hostId], references: [id])
+  joinCode             String     @unique // 6-char A-Z0-9, no ambiguous chars
+  qrSecret             String // signed payload component
+  baseCapacity         Int        @default(3) // first N members covered by host's BASE_UNLOCK
+  status               RoomStatus @default(DRAFT)
+  startsAt             DateTime
+  endsAt               DateTime // capture window closes here
+  endedAt              DateTime? // when status actually became ENDED (paywall engages)
+  baseUnlockedAt       DateTime? // when host successfully paid BASE_UNLOCK
+  baseUnlockPaymentId  String? // FK to Payment that unlocked the base members
+  retentionUntil       DateTime // photos auto-delete after this
+  coverPhotoId         String?
+  pricingCurrency      String     @default("NGN") // currency captured at room creation
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  memberships      Membership[]
+  photos           Photo[]
+  payments         Payment[]
+  retentionWindows RetentionWindow[]
+
+  @@index([joinCode])
+  @@index([status, retentionUntil])
+}
+
+model Membership {
+  id              String      @id @default(cuid())
+  roomId          String
+  userId          String
+  role            Role        @default(GUEST)
+  joinOrder       Int // 1, 2, 3, … determines if EXEMPT (≤baseCapacity) or needs MEMBER_UNLOCK
+  unlockState     UnlockState @default(LOCKED)
+  unlockedAt      DateTime? // when this membership gained gallery access
+  unlockPaymentId String? // FK to MEMBER_UNLOCK Payment (null for EXEMPT)
+  joinedAt        DateTime    @default(now())
+  leftAt          DateTime?
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, userId])
+  @@unique([roomId, joinOrder])
+  @@index([userId])
+}
+
+model Photo {
+  id         String      @id @default(cuid())
+  roomId     String
+  uploaderId String
+  storageKey String // R2 object key (originals/{room}/{id}.jpg)
+  thumbKey   String?
+  mediumKey  String?
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  takenAt    DateTime? // EXIF or upload time
+  filter     String? // filter id applied client-side
+  status     PhotoStatus @default(UPLOADING)
+  flagReason String? // moderation
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
+
+  room      Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploader  User            @relation(fields: [uploaderId], references: [id])
+  reactions PhotoReaction[]
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@index([uploaderId])
+  @@index([status])
+}
+
+model PhotoReaction {
+  id        String   @id @default(cuid())
+  photoId   String
+  userId    String
+  type      String   @default("LIKE")
+  createdAt DateTime @default(now())
+  photo     Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([photoId, userId, type])
+}
+
+model Payment {
+  id           String          @id @default(cuid())
+  userId       String // who paid
+  roomId       String? // for BASE_UNLOCK / RETENTION_EXTENSION
+  membershipId String? // for MEMBER_UNLOCK — exact target
+  provider     PaymentProvider
+  providerRef  String          @unique // Paystack reference
+  amountMinor  Int // smallest unit (kobo, cents, pesewa, etc.)
+  currency     String // ISO 4217: NGN, USD, GHS, KES, ZAR, GBP, EUR
+  fxLockedRate Decimal?        @db.Decimal(18, 8) // FX rate snapshot if conversion was applied
+  status       PaymentStatus   @default(PENDING)
+  purpose      PaymentPurpose
+  metadata     Json?
+  paidAt       DateTime?
+  createdAt    DateTime        @default(now())
+  user         User            @relation(fields: [userId], references: [id])
+  room         Room?           @relation(fields: [roomId], references: [id])
+
+  @@index([userId])
+  @@index([roomId])
+  @@index([membershipId])
+  @@index([status])
+}
+
+model RetentionWindow {
+  id        String   @id @default(cuid())
+  roomId    String
+  extendsTo DateTime
+  paymentId String?
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  platform   Platform
+  lastSeenAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, createdAt(sort: Desc)])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([entity, entityId])
+}
