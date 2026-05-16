@@ -18,7 +18,7 @@ The complete technical specification is at **`docs/architecture.md`**. **Read it
 ## Stack (locked — see §2 of architecture doc)
 
 - Monorepo: pnpm workspaces + Turborepo
-- Mobile: React Native + Expo SDK 52+ (TypeScript)
+- Mobile: React Native 0.83 + Expo SDK 55 (TypeScript)
 - Backend: NestJS (Node 20+, TypeScript) + Prisma + PostgreSQL 16
 - Cache/queue: Redis 7 + BullMQ
 - Storage: Cloudflare R2 (S3-compatible)

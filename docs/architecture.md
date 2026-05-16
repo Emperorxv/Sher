@@ -6,9 +6,10 @@
 
 ## 1. Product Summary
 
-**Sher** is a mobile app for collaborative event photography. Groups of people at a shared event (parties, weddings, birthdays, conferences, weekend trips) join a temporary "Room" by scanning a QR code. Each member uses their own device's camera *through the app* to capture photos. All photos in the Room are pooled and accessible to every member.
+**Sher** is a mobile app for collaborative event photography. Groups of people at a shared event (parties, weddings, birthdays, conferences, weekend trips) join a temporary "Room" by scanning a QR code. Each member uses their own device's camera _through the app_ to capture photos. All photos in the Room are pooled and accessible to every member.
 
 ### Core flows
+
 1. **Host** creates a Room **for free** — no payment up front, instant access. Default capacity is 3 members (host + 2). The host gets a QR code immediately.
 2. **Guests** scan the QR code (or enter a 6-character join code), authenticate via phone OTP, join the Room.
 3. If the host wants to invite a **4th, 5th, or Nth member**, they are warned in-app that each additional member will cost their guests a small unlock fee at the end of the event. The host can still invite them; the warning is informational, not blocking.
@@ -22,7 +23,7 @@
 
 ### Monetization (free-to-create, pay-to-access)
 
-This is a freemium funnel: zero friction to start a Room → emotional investment is built as photos are captured → the paywall lands at the moment of highest perceived value (when the user wants to *see and keep* their memories).
+This is a freemium funnel: zero friction to start a Room → emotional investment is built as photos are captured → the paywall lands at the moment of highest perceived value (when the user wants to _see and keep_ their memories).
 
 - **Free to create.** Host pays nothing to spin up a Room of 3.
 - **Base unlock (host-paid):** ₦1,500 / $1.99 — unlocks the gallery for the host and the first 2 guests after the Room ends.
@@ -38,32 +39,33 @@ Because some members pay (base 3) via the host and other members (extras) pay th
 
 ## 2. Tech Stack — Final Decisions
 
-| Layer | Choice | Why |
-|---|---|---|
-| Mobile | **React Native (Expo SDK 52+)** with TypeScript | One codebase for iOS/Android, mature camera + filter stack, EAS for builds/OTA |
-| Camera | **react-native-vision-camera v4** + **react-native-skia** for filters | GPU-accelerated, far superior to expo-camera for this use case |
-| Mobile state | **Zustand** (client state) + **TanStack Query** (server state) | Lightweight, predictable, ideal for offline-first |
-| Local storage | **MMKV** (preferences) + **expo-sqlite** (photo queue) | MMKV is 30x faster than AsyncStorage |
-| Backend framework | **NestJS** (Node.js 20+, TypeScript) | Opinionated structure, DI, decorators, scales from MVP to enterprise |
-| Database | **PostgreSQL 16** | Relational integrity for memberships, payments, retention |
-| ORM | **Prisma** | Type-safe queries, migrations, great DX |
-| Cache / queue / pubsub | **Redis 7** | Sessions, rate limits, BullMQ jobs, pub/sub for real-time |
-| Object storage | **Cloudflare R2** (S3-compatible) | **Zero egress fees** — crucial for a download-heavy app |
-| CDN | **Cloudflare** | Image resizing via Cloudflare Images Transform, global edge |
-| Image processing (server) | **sharp** (libvips) | Thumbnail/medium variants on upload |
-| Real-time | **Socket.IO** (Redis adapter) | Reliable, handles reconnect, fallbacks |
-| Push notifications | **Expo Push Service** → APNS + FCM | Single API, free, abstracts platform differences |
-| Background jobs | **BullMQ** (Redis-backed) | Scheduled deletion, payment reconciliation, notifications |
-| Auth | Phone + OTP (Termii/Africa's Talking), JWT (access + refresh) | Phone-first identity is dominant in NG |
-| Payments | **Paystack** (primary) + **Flutterwave** (fallback) | Cards, USSD, bank transfer, mobile money |
-| Email (receipts) | **Resend** or **AWS SES** | Transactional only |
-| Observability | **Sentry** (errors), **BetterStack** (logs), **Grafana Cloud** (metrics) | Free tiers cover MVP, scale up later |
-| Hosting (compute) | **AWS ECS Fargate** *or* **DigitalOcean App Platform** | Both fine; DO is cheaper for early stage |
-| IaC | **Terraform** | Reproducible infra, multi-environment |
-| CI/CD | **GitHub Actions** + **EAS Build/Submit** | Standard, free for private repos under limits |
-| Secrets | **AWS Secrets Manager** *or* **Doppler** | Never `.env` in repo |
+| Layer                     | Choice                                                                   | Why                                                                            |
+| ------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Mobile                    | **React Native 0.83 (Expo SDK 55)** with TypeScript                      | One codebase for iOS/Android, mature camera + filter stack, EAS for builds/OTA |
+| Camera                    | **react-native-vision-camera v4** + **react-native-skia** for filters    | GPU-accelerated, far superior to expo-camera for this use case                 |
+| Mobile state              | **Zustand** (client state) + **TanStack Query** (server state)           | Lightweight, predictable, ideal for offline-first                              |
+| Local storage             | **MMKV** (preferences) + **expo-sqlite** (photo queue)                   | MMKV is 30x faster than AsyncStorage                                           |
+| Backend framework         | **NestJS** (Node.js 20+, TypeScript)                                     | Opinionated structure, DI, decorators, scales from MVP to enterprise           |
+| Database                  | **PostgreSQL 16**                                                        | Relational integrity for memberships, payments, retention                      |
+| ORM                       | **Prisma**                                                               | Type-safe queries, migrations, great DX                                        |
+| Cache / queue / pubsub    | **Redis 7**                                                              | Sessions, rate limits, BullMQ jobs, pub/sub for real-time                      |
+| Object storage            | **Cloudflare R2** (S3-compatible)                                        | **Zero egress fees** — crucial for a download-heavy app                        |
+| CDN                       | **Cloudflare**                                                           | Image resizing via Cloudflare Images Transform, global edge                    |
+| Image processing (server) | **sharp** (libvips)                                                      | Thumbnail/medium variants on upload                                            |
+| Real-time                 | **Socket.IO** (Redis adapter)                                            | Reliable, handles reconnect, fallbacks                                         |
+| Push notifications        | **Expo Push Service** → APNS + FCM                                       | Single API, free, abstracts platform differences                               |
+| Background jobs           | **BullMQ** (Redis-backed)                                                | Scheduled deletion, payment reconciliation, notifications                      |
+| Auth                      | Phone + OTP (Termii/Africa's Talking), JWT (access + refresh)            | Phone-first identity is dominant in NG                                         |
+| Payments                  | **Paystack** (primary) + **Flutterwave** (fallback)                      | Cards, USSD, bank transfer, mobile money                                       |
+| Email (receipts)          | **Resend** or **AWS SES**                                                | Transactional only                                                             |
+| Observability             | **Sentry** (errors), **BetterStack** (logs), **Grafana Cloud** (metrics) | Free tiers cover MVP, scale up later                                           |
+| Hosting (compute)         | **AWS ECS Fargate** _or_ **DigitalOcean App Platform**                   | Both fine; DO is cheaper for early stage                                       |
+| IaC                       | **Terraform**                                                            | Reproducible infra, multi-environment                                          |
+| CI/CD                     | **GitHub Actions** + **EAS Build/Submit**                                | Standard, free for private repos under limits                                  |
+| Secrets                   | **AWS Secrets Manager** _or_ **Doppler**                                 | Never `.env` in repo                                                           |
 
 ### Why not Flutter / native?
+
 - Flutter is fine; the deciding factor is hiring + ecosystem. React Native has a much larger Nigerian developer pool and an unmatched library ecosystem for camera/filters specifically.
 - Native (Swift + Kotlin) doubles build time, doubles bug surface, doubles team cost. Not justified for this product.
 
@@ -355,27 +357,28 @@ The user has set these prices. They are the source of truth (override the per-cu
 
 #### NGN (Nigeria — primary market)
 
-| Fee | Amount (NGN) | Paid by | When |
-|---|---|---|---|
-| Base unlock (members 1–3) | ₦1,500 | Host | After Room ends |
-| Per extra member unlock | ₦1,000 | That member | After Room ends |
-| Retention extension | ₦1,000 / month, ₦8,000 / year | Any member | Anytime after unlock |
+| Fee                       | Amount (NGN)                  | Paid by     | When                 |
+| ------------------------- | ----------------------------- | ----------- | -------------------- |
+| Base unlock (members 1–3) | ₦1,500                        | Host        | After Room ends      |
+| Per extra member unlock   | ₦1,000                        | That member | After Room ends      |
+| Retention extension       | ₦1,000 / month, ₦8,000 / year | Any member  | Anytime after unlock |
 
 #### Multi-currency price book (initial)
 
 These are **regional psychological prices**, not strict FX conversions of NGN. Stored as a versioned `PriceBook` in code (`apps/api/src/pricing/price-book.ts`); editable without a migration.
 
-| Currency | Base unlock | Extra member unlock | Retention / mo | Retention / yr |
-|---|---|---|---|---|
-| **NGN** (Nigeria)         | 1,500     | 1,000     | 1,000  | 8,000  |
-| **USD** (US + fallback)   | 1.99      | 0.99      | 1.49   | 9.99   |
-| **GHS** (Ghana)           | 24        | 16        | 18     | 119    |
-| **KES** (Kenya)           | 259       | 159       | 199    | 1,299  |
-| **ZAR** (South Africa)    | 36        | 24        | 27     | 179    |
-| **GBP** (UK)              | 1.59      | 0.79      | 1.19   | 7.99   |
-| **EUR** (Eurozone)        | 1.79      | 0.89      | 1.39   | 8.99   |
+| Currency                | Base unlock | Extra member unlock | Retention / mo | Retention / yr |
+| ----------------------- | ----------- | ------------------- | -------------- | -------------- |
+| **NGN** (Nigeria)       | 1,500       | 1,000               | 1,000          | 8,000          |
+| **USD** (US + fallback) | 1.99        | 0.99                | 1.49           | 9.99           |
+| **GHS** (Ghana)         | 24          | 16                  | 18             | 119            |
+| **KES** (Kenya)         | 259         | 159                 | 199            | 1,299          |
+| **ZAR** (South Africa)  | 36          | 24                  | 27             | 179            |
+| **GBP** (UK)            | 1.59        | 0.79                | 1.19           | 7.99           |
+| **EUR** (Eurozone)      | 1.79        | 0.89                | 1.39           | 8.99           |
 
 **Currency selection rules** (in priority order, evaluated at Room creation and persisted on `Room.pricingCurrency`):
+
 1. User has manually overridden currency in Settings → use that.
 2. SIM country code (where available via the OS) matches a supported currency → use it.
 3. IP-based geolocation country → maps to a supported currency.
@@ -430,73 +433,73 @@ All responses follow:
 
 ### Auth
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/auth/otp/request` | `{ phone }` → sends OTP, returns `challengeId` |
-| POST | `/auth/otp/verify`  | `{ challengeId, code }` → `{ accessToken, refreshToken, user }` |
-| POST | `/auth/refresh`     | `{ refreshToken }` → new pair |
-| POST | `/auth/logout`      | revokes refresh token |
-| POST | `/auth/devices`     | register Expo push token |
-| DELETE | `/auth/devices/:id` | unregister |
-| DELETE | `/auth/account`    | soft-delete (NDPR right to erasure) |
+| Method | Path                | Purpose                                                         |
+| ------ | ------------------- | --------------------------------------------------------------- |
+| POST   | `/auth/otp/request` | `{ phone }` → sends OTP, returns `challengeId`                  |
+| POST   | `/auth/otp/verify`  | `{ challengeId, code }` → `{ accessToken, refreshToken, user }` |
+| POST   | `/auth/refresh`     | `{ refreshToken }` → new pair                                   |
+| POST   | `/auth/logout`      | revokes refresh token                                           |
+| POST   | `/auth/devices`     | register Expo push token                                        |
+| DELETE | `/auth/devices/:id` | unregister                                                      |
+| DELETE | `/auth/account`     | soft-delete (NDPR right to erasure)                             |
 
 ### Users
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET  | `/me` | current profile + active rooms |
-| PATCH | `/me` | update displayName/avatar |
-| POST | `/me/avatar/upload-url` | presigned PUT for avatar |
+| Method | Path                    | Purpose                        |
+| ------ | ----------------------- | ------------------------------ |
+| GET    | `/me`                   | current profile + active rooms |
+| PATCH  | `/me`                   | update displayName/avatar      |
+| POST   | `/me/avatar/upload-url` | presigned PUT for avatar       |
 
 ### Rooms
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST   | `/rooms`                       | create Room (free, returns immediately ACTIVE with QR + price quote in local currency) |
-| GET    | `/rooms/:id`                   | room detail (members, status, photo count, current user's unlock state) |
-| PATCH  | `/rooms/:id`                   | host edits name/end time (limited fields, only while ACTIVE) |
-| GET    | `/rooms/:id/members`           | paginated members with `joinOrder` and `unlockState` |
-| DELETE | `/rooms/:id/members/:userId`   | host removes a member (only while ACTIVE, before they've captured) |
-| POST   | `/rooms/join`                  | `{ joinCode \| qrToken }` → membership; response includes whether this user will need to pay MEMBER_UNLOCK |
-| POST   | `/rooms/:id/end`               | host ends capture early → engages paywall |
-| GET    | `/rooms/:id/pricing`           | returns the current Room's pricing in its locked currency |
-| POST   | `/rooms/:id/retention/extend`  | `{ months: 1..12 }` → payment intent (any unlocked member can pay) |
-| GET    | `/rooms`                       | my rooms (hosted + member) |
+| Method | Path                          | Purpose                                                                                                    |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| POST   | `/rooms`                      | create Room (free, returns immediately ACTIVE with QR + price quote in local currency)                     |
+| GET    | `/rooms/:id`                  | room detail (members, status, photo count, current user's unlock state)                                    |
+| PATCH  | `/rooms/:id`                  | host edits name/end time (limited fields, only while ACTIVE)                                               |
+| GET    | `/rooms/:id/members`          | paginated members with `joinOrder` and `unlockState`                                                       |
+| DELETE | `/rooms/:id/members/:userId`  | host removes a member (only while ACTIVE, before they've captured)                                         |
+| POST   | `/rooms/join`                 | `{ joinCode \| qrToken }` → membership; response includes whether this user will need to pay MEMBER_UNLOCK |
+| POST   | `/rooms/:id/end`              | host ends capture early → engages paywall                                                                  |
+| GET    | `/rooms/:id/pricing`          | returns the current Room's pricing in its locked currency                                                  |
+| POST   | `/rooms/:id/retention/extend` | `{ months: 1..12 }` → payment intent (any unlocked member can pay)                                         |
+| GET    | `/rooms`                      | my rooms (hosted + member)                                                                                 |
 
 ### Unlocks (new — post-event paywall)
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST   | `/rooms/:id/unlock/base`       | host initiates BASE_UNLOCK payment → returns Paystack authorization URL |
-| POST   | `/rooms/:id/unlock/member`     | non-exempt member (joinOrder > baseCapacity) initiates MEMBER_UNLOCK for themselves |
-| GET    | `/rooms/:id/unlock/status`     | current unlock posture for the caller (`LOCKED` / `UNLOCKED` / `EXEMPT`) plus host's BASE_UNLOCK status |
+| Method | Path                       | Purpose                                                                                                 |
+| ------ | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| POST   | `/rooms/:id/unlock/base`   | host initiates BASE_UNLOCK payment → returns Paystack authorization URL                                 |
+| POST   | `/rooms/:id/unlock/member` | non-exempt member (joinOrder > baseCapacity) initiates MEMBER_UNLOCK for themselves                     |
+| GET    | `/rooms/:id/unlock/status` | current unlock posture for the caller (`LOCKED` / `UNLOCKED` / `EXEMPT`) plus host's BASE_UNLOCK status |
 
 ### Pricing
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET   | `/pricing/quote`                | `?currency=NGN&extraMembers=2` → quote for Room creation paywall preview |
-| GET   | `/pricing/currencies`           | supported currencies + display labels |
+| Method | Path                  | Purpose                                                                  |
+| ------ | --------------------- | ------------------------------------------------------------------------ |
+| GET    | `/pricing/quote`      | `?currency=NGN&extraMembers=2` → quote for Room creation paywall preview |
+| GET    | `/pricing/currencies` | supported currencies + display labels                                    |
 
 ### Photos
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/rooms/:id/photos/upload-url` | request a presigned PUT to R2; returns `{ uploadUrl, photoId, key }` |
-| POST | `/rooms/:id/photos/:photoId/commit` | client tells API upload finished; API enqueues post-processing |
-| GET  | `/rooms/:id/photos`            | paginated gallery (cursor-based, newest first) |
-| GET  | `/rooms/:id/photos/:photoId`   | single photo (signed URLs for thumb/medium/original) |
-| POST | `/rooms/:id/photos/:photoId/like` | toggle like |
-| DELETE | `/rooms/:id/photos/:photoId` | uploader or host can delete |
-| POST | `/rooms/:id/photos/:photoId/flag` | report; moves to moderation queue |
-| GET  | `/rooms/:id/photos/bulk-download` | generates a zip; returns job id + poll URL |
+| Method | Path                                | Purpose                                                              |
+| ------ | ----------------------------------- | -------------------------------------------------------------------- |
+| POST   | `/rooms/:id/photos/upload-url`      | request a presigned PUT to R2; returns `{ uploadUrl, photoId, key }` |
+| POST   | `/rooms/:id/photos/:photoId/commit` | client tells API upload finished; API enqueues post-processing       |
+| GET    | `/rooms/:id/photos`                 | paginated gallery (cursor-based, newest first)                       |
+| GET    | `/rooms/:id/photos/:photoId`        | single photo (signed URLs for thumb/medium/original)                 |
+| POST   | `/rooms/:id/photos/:photoId/like`   | toggle like                                                          |
+| DELETE | `/rooms/:id/photos/:photoId`        | uploader or host can delete                                          |
+| POST   | `/rooms/:id/photos/:photoId/flag`   | report; moves to moderation queue                                    |
+| GET    | `/rooms/:id/photos/bulk-download`   | generates a zip; returns job id + poll URL                           |
 
 ### Webhooks (server-to-server)
 
-| Method | Path | From |
-|---|---|---|
-| POST | `/webhooks/paystack` | Paystack — verify with `x-paystack-signature` |
-| POST | `/webhooks/flutterwave` | Flutterwave — verify with `verif-hash` |
+| Method | Path                    | From                                          |
+| ------ | ----------------------- | --------------------------------------------- |
+| POST   | `/webhooks/paystack`    | Paystack — verify with `x-paystack-signature` |
+| POST   | `/webhooks/flutterwave` | Flutterwave — verify with `verif-hash`        |
 
 ### Realtime (Socket.IO namespaces)
 
@@ -513,12 +516,12 @@ All responses follow:
 
 ### Rate limits (per IP + per user)
 
-| Endpoint group | Limit |
-|---|---|
-| `/auth/otp/request` | 3 per phone per hour, 10 per IP per hour |
-| `/auth/otp/verify` | 5 per challenge, then challenge invalidated |
-| Photo upload URLs | 300 per room per hour, 60 per user per minute |
-| Default | 120/min per user |
+| Endpoint group      | Limit                                         |
+| ------------------- | --------------------------------------------- |
+| `/auth/otp/request` | 3 per phone per hour, 10 per IP per hour      |
+| `/auth/otp/verify`  | 5 per challenge, then challenge invalidated   |
+| Photo upload URLs   | 300 per room per hour, 60 per user per minute |
+| Default             | 120/min per user                              |
 
 Implemented via `@nestjs/throttler` + Redis store.
 
@@ -571,6 +574,7 @@ app/
 ### Filter set (initial 8)
 
 Implemented in Skia shaders so they run on the GPU:
+
 1. Original (no-op)
 2. Warm
 3. Cool
@@ -598,6 +602,7 @@ Each is `~30-80 lines` of Skia code. Filters are version-stamped (`filter: "fade
 **Personality:** Fun, energetic, celebratory, friendly. The app should feel like a party, not a productivity tool.
 
 **Visual rules:**
+
 - **Full saturated colors only — no gradients anywhere.** Solid color fills only. This is a hard rule per product direction.
 - High contrast. Bold color blocks. Generous whitespace around vivid surfaces.
 - Playful but not childish. Think Polaroid, party invites, mixtape covers — not kids' toys.
@@ -607,17 +612,17 @@ Each is `~30-80 lines` of Skia code. Filters are version-stamped (`filter: "fade
 
 These are starter values — tune in the design tool, then sync back to code. Stored in `apps/mobile/theme/tokens.ts` and `packages/ui/tokens.ts`.
 
-| Token | Hex | Usage |
-|---|---|---|
+| Token            | Hex       | Usage                                                                      |
+| ---------------- | --------- | -------------------------------------------------------------------------- |
 | `colors.primary` | `#FF3B6B` | Main brand color (coral pink). Primary buttons, brand mark, active states. |
-| `colors.accent` | `#FFD60A` | Sunshine yellow. Highlights, badges, "new" indicators. |
-| `colors.success` | `#00C4B8` | Electric teal. Success states, paid/unlocked indicators. |
-| `colors.violet` | `#7B2CBF` | Deep purple. Secondary actions, host badge. |
-| `colors.coal` | `#0A0A0A` | Near-black. Body text, primary content. |
-| `colors.cream` | `#FFF8F0` | Warm off-white. Default background. |
-| `colors.ink` | `#1A1A1A` | Cards on cream, alt surfaces. |
-| `colors.fog` | `#E8E4DE` | Borders, dividers, disabled. |
-| `colors.danger` | `#E53935` | Destructive actions, errors. |
+| `colors.accent`  | `#FFD60A` | Sunshine yellow. Highlights, badges, "new" indicators.                     |
+| `colors.success` | `#00C4B8` | Electric teal. Success states, paid/unlocked indicators.                   |
+| `colors.violet`  | `#7B2CBF` | Deep purple. Secondary actions, host badge.                                |
+| `colors.coal`    | `#0A0A0A` | Near-black. Body text, primary content.                                    |
+| `colors.cream`   | `#FFF8F0` | Warm off-white. Default background.                                        |
+| `colors.ink`     | `#1A1A1A` | Cards on cream, alt surfaces.                                              |
+| `colors.fog`     | `#E8E4DE` | Borders, dividers, disabled.                                               |
+| `colors.danger`  | `#E53935` | Destructive actions, errors.                                               |
 
 **No gradient utilities exist in the design system.** If a Claude Code output uses `LinearGradient`, `expo-linear-gradient`, or CSS `background: linear-gradient(...)`, reject it.
 
@@ -628,6 +633,7 @@ These are starter values — tune in the design tool, then sync back to code. St
 - **Mono (optional):** `JetBrains Mono` — for join codes ("ABC4F7").
 
 Type scale (in pt, mobile):
+
 - Display: 40 / 32 / 26
 - Heading: 22 / 18
 - Body: 16 / 14
@@ -688,10 +694,12 @@ Phase 2. Keep tokens namespaced so swapping later is mechanical.
 ### Authorization
 
 Two-tier:
+
 1. **Authentication guard** — every endpoint except `/auth/*` and `/health`.
 2. **Resource policies** — NestJS `@RoomRole(Role.HOST)` decorator + guard pulls `Membership` from `req.user.id` + path `:roomId`.
 
 Examples:
+
 - Anyone authenticated can `POST /rooms` (create draft).
 - Only members can `GET /rooms/:id`.
 - Only host/cohost can `PATCH /rooms/:id`, end, upgrade, remove members.
@@ -762,12 +770,12 @@ A pure module `apps/api/src/pricing/`:
 // price-book.ts
 export const PRICE_BOOK = {
   NGN: { baseUnlock: 150000, memberUnlock: 100000, retentionMonth: 100000, retentionYear: 800000 },
-  USD: { baseUnlock: 199,    memberUnlock: 99,     retentionMonth: 149,    retentionYear: 999 },
-  GHS: { baseUnlock: 2400,   memberUnlock: 1600,   retentionMonth: 1800,   retentionYear: 11900 },
-  KES: { baseUnlock: 25900,  memberUnlock: 15900,  retentionMonth: 19900,  retentionYear: 129900 },
-  ZAR: { baseUnlock: 3600,   memberUnlock: 2400,   retentionMonth: 2700,   retentionYear: 17900 },
-  GBP: { baseUnlock: 159,    memberUnlock: 79,     retentionMonth: 119,    retentionYear: 799 },
-  EUR: { baseUnlock: 179,    memberUnlock: 89,     retentionMonth: 139,    retentionYear: 899 },
+  USD: { baseUnlock: 199, memberUnlock: 99, retentionMonth: 149, retentionYear: 999 },
+  GHS: { baseUnlock: 2400, memberUnlock: 1600, retentionMonth: 1800, retentionYear: 11900 },
+  KES: { baseUnlock: 25900, memberUnlock: 15900, retentionMonth: 19900, retentionYear: 129900 },
+  ZAR: { baseUnlock: 3600, memberUnlock: 2400, retentionMonth: 2700, retentionYear: 17900 },
+  GBP: { baseUnlock: 159, memberUnlock: 79, retentionMonth: 119, retentionYear: 799 },
+  EUR: { baseUnlock: 179, memberUnlock: 89, retentionMonth: 139, retentionYear: 899 },
 } as const;
 // values are in the currency's smallest unit (kobo, cents, pesewa, etc.)
 ```
@@ -865,6 +873,7 @@ Successful payments trigger an email receipt via Resend (if user has email) and 
 ### Post-processing worker
 
 For each photo:
+
 1. Read original from R2 (stream).
 2. Strip EXIF (privacy: GPS, device serials). Keep `DateTimeOriginal` if present (it's already in DB).
 3. Generate **thumb** (480px longest edge, q72) → `thumbs/{roomId}/{photoId}.webp`.
@@ -913,14 +922,14 @@ For each photo:
 
 ### Triggers
 
-| Event | Audience | Body |
-|---|---|---|
-| New photos batched (every 60s while app backgrounded) | Other room members | "5 new photos in {room name}" |
-| Member joined | Host | "{name} joined {room name}" |
-| Room ending soon (1h, 10 min) | Host | "{room name} closes in 10 min" |
-| Photos expiring (T-7d, T-1d) | All members | "Photos from {room name} delete in 7 days. Extend?" |
-| Payment success | Payer | "Payment received. {room name} is live." |
-| Payment failed | Payer | "Payment didn't go through. Try again?" |
+| Event                                                 | Audience           | Body                                                |
+| ----------------------------------------------------- | ------------------ | --------------------------------------------------- |
+| New photos batched (every 60s while app backgrounded) | Other room members | "5 new photos in {room name}"                       |
+| Member joined                                         | Host               | "{name} joined {room name}"                         |
+| Room ending soon (1h, 10 min)                         | Host               | "{room name} closes in 10 min"                      |
+| Photos expiring (T-7d, T-1d)                          | All members        | "Photos from {room name} delete in 7 days. Extend?" |
+| Payment success                                       | Payer              | "Payment received. {room name} is live."            |
+| Payment failed                                        | Payer              | "Payment didn't go through. Try again?"             |
 
 ### Implementation
 
@@ -950,6 +959,7 @@ EXPIRED  → photos purged from R2 → ARCHIVED
 ```
 
 Notes:
+
 - **The paywall engages exactly at `Room.status = ENDED`.** Before that, the gallery is fully visible to all members regardless of unlock state.
 - Unlocked members can continue downloading right up to `retentionUntil`.
 - LOCKED members can still pay MEMBER_UNLOCK any time before `retentionUntil` — they retroactively gain access.
@@ -959,14 +969,14 @@ Notes:
 
 ### Scheduled jobs (BullMQ, repeatable)
 
-| Job | Schedule | Action |
-|---|---|---|
-| `room.tick` | every 5 min | move ACTIVE→ENDED where `endsAt < now` |
-| `room.retention.notify` | daily 08:00 WAT | notify members at T-7d, T-1d |
-| `room.retention.purge` | daily 02:00 WAT | for ENDED rooms with `retentionUntil < now`: delete photos from R2, soft-delete DB rows, move room → EXPIRED |
-| `payment.reconcile` | hourly | resolve stuck PENDING payments |
-| `auth.cleanup` | daily | delete expired OtpChallenge rows |
-| `device.prune` | weekly | remove DeviceTokens not seen in 60 days |
+| Job                     | Schedule        | Action                                                                                                       |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------------ |
+| `room.tick`             | every 5 min     | move ACTIVE→ENDED where `endsAt < now`                                                                       |
+| `room.retention.notify` | daily 08:00 WAT | notify members at T-7d, T-1d                                                                                 |
+| `room.retention.purge`  | daily 02:00 WAT | for ENDED rooms with `retentionUntil < now`: delete photos from R2, soft-delete DB rows, move room → EXPIRED |
+| `payment.reconcile`     | hourly          | resolve stuck PENDING payments                                                                               |
+| `auth.cleanup`          | daily           | delete expired OtpChallenge rows                                                                             |
+| `device.prune`          | weekly          | remove DeviceTokens not seen in 60 days                                                                      |
 
 ### Retention extension
 
@@ -978,23 +988,23 @@ Notes:
 
 ### Threat model (top risks → mitigation)
 
-| Threat | Mitigation |
-|---|---|
-| Photos leaking to non-members | Private R2 + signed URLs only; membership check on every read; never expose R2 base URL |
-| Account takeover via SIM swap | Risk inherent to phone-OTP; mitigate with device binding (new device → email confirmation if email present; otherwise 24h cool-down for sensitive actions) |
-| OTP brute force | 5 attempts per challenge, rate limit per phone + IP, exponential lockout |
-| Stolen JWT | Short access TTL (15 min), refresh rotation with reuse detection, secure-store |
-| Reverse-engineered API | Certificate pinning (mobile), per-user rate limits, app attestation (Play Integrity, App Attest) on sensitive endpoints — Phase 2 |
-| Payment tampering | Webhook signature verification, amount + ref check, idempotency, reconciliation |
-| Malicious uploads (CSAM, abuse) | Mandatory moderation queue for flagged content; auto-scan in Phase 2; takedown SLA documented |
-| EXIF metadata leaking GPS | Strip EXIF server-side on post-process |
-| DoS | Cloudflare WAF + rate limits; R2 absorbs upload traffic so API isn't bottleneck |
-| Data at rest | Postgres encryption at rest (provider default), R2 server-side encryption, secrets in Secrets Manager |
-| Data in transit | TLS 1.3 everywhere, HSTS, no plaintext fallback |
-| SQL injection | Prisma parameterized queries (no raw SQL except reviewed migrations) |
-| Mass assignment | DTOs validated with class-validator / Zod; whitelist fields |
-| Insecure deserialization | No `eval`, no untrusted JSON.parse without schema |
-| Dependency vulns | Dependabot + Snyk in CI; `pnpm audit` gate |
+| Threat                          | Mitigation                                                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Photos leaking to non-members   | Private R2 + signed URLs only; membership check on every read; never expose R2 base URL                                                                    |
+| Account takeover via SIM swap   | Risk inherent to phone-OTP; mitigate with device binding (new device → email confirmation if email present; otherwise 24h cool-down for sensitive actions) |
+| OTP brute force                 | 5 attempts per challenge, rate limit per phone + IP, exponential lockout                                                                                   |
+| Stolen JWT                      | Short access TTL (15 min), refresh rotation with reuse detection, secure-store                                                                             |
+| Reverse-engineered API          | Certificate pinning (mobile), per-user rate limits, app attestation (Play Integrity, App Attest) on sensitive endpoints — Phase 2                          |
+| Payment tampering               | Webhook signature verification, amount + ref check, idempotency, reconciliation                                                                            |
+| Malicious uploads (CSAM, abuse) | Mandatory moderation queue for flagged content; auto-scan in Phase 2; takedown SLA documented                                                              |
+| EXIF metadata leaking GPS       | Strip EXIF server-side on post-process                                                                                                                     |
+| DoS                             | Cloudflare WAF + rate limits; R2 absorbs upload traffic so API isn't bottleneck                                                                            |
+| Data at rest                    | Postgres encryption at rest (provider default), R2 server-side encryption, secrets in Secrets Manager                                                      |
+| Data in transit                 | TLS 1.3 everywhere, HSTS, no plaintext fallback                                                                                                            |
+| SQL injection                   | Prisma parameterized queries (no raw SQL except reviewed migrations)                                                                                       |
+| Mass assignment                 | DTOs validated with class-validator / Zod; whitelist fields                                                                                                |
+| Insecure deserialization        | No `eval`, no untrusted JSON.parse without schema                                                                                                          |
+| Dependency vulns                | Dependabot + Snyk in CI; `pnpm audit` gate                                                                                                                 |
 
 ### OWASP Mobile Top 10 — concrete actions
 
@@ -1040,6 +1050,7 @@ Notes:
 ### Test types and where they live
 
 **API — `apps/api/test/`**
+
 - Unit (`*.spec.ts`) next to source; pure functions, services with mocked deps.
 - Integration (`test/integration/`): spin up Postgres + Redis via Testcontainers, hit real endpoints with Supertest, real Prisma.
 - Contract: provider-side Pact tests for the mobile API client (Phase 2).
@@ -1047,6 +1058,7 @@ Notes:
 - Property-based: fast-check on pricing/quota calculation.
 
 **Mobile — `apps/mobile/__tests__/`**
+
 - Unit: pure utilities, filter pipeline math, queue state machine.
 - Component: React Native Testing Library, render screens with mocked TanStack Query + Zustand.
 - Snapshot: avoid except for stable visual primitives.
@@ -1056,10 +1068,12 @@ Notes:
   - Retention expiry path (time-warped)
 
 **Load — `tests/load/`**
+
 - k6 scenarios: 500 concurrent uploaders per room, 10k concurrent gallery viewers.
 - Target SLOs: p95 upload-url < 200ms, p95 commit < 300ms, p95 gallery page < 400ms.
 
 **Security**
+
 - Static: `eslint-plugin-security`, `semgrep` rules in CI.
 - Secrets: `gitleaks` pre-commit + CI.
 - Dynamic: scheduled OWASP ZAP scan against staging.
@@ -1073,6 +1087,7 @@ Notes:
 ### CI gates
 
 A PR cannot merge if:
+
 - TypeScript fails
 - Any test fails
 - Coverage drops below threshold
@@ -1110,14 +1125,14 @@ A PR cannot merge if:
 
 ### Alerts
 
-| Alert | Condition | Channel |
-|---|---|---|
-| API error rate | 5xx > 1% over 5 min | Slack #incidents |
-| OTP failure spike | failures > 50/min | Slack |
-| Payment webhook lag | >5 min between Paystack send and receipt | PagerDuty |
-| Worker backlog | any queue `waiting > 1000` for 10 min | Slack |
-| R2 4xx/5xx | unusual rate | Slack |
-| Retention purge skipped | job didn't run by 03:00 WAT | Slack |
+| Alert                   | Condition                                | Channel          |
+| ----------------------- | ---------------------------------------- | ---------------- |
+| API error rate          | 5xx > 1% over 5 min                      | Slack #incidents |
+| OTP failure spike       | failures > 50/min                        | Slack            |
+| Payment webhook lag     | >5 min between Paystack send and receipt | PagerDuty        |
+| Worker backlog          | any queue `waiting > 1000` for 10 min    | Slack            |
+| R2 4xx/5xx              | unusual rate                             | Slack            |
+| Retention purge skipped | job didn't run by 03:00 WAT              | Slack            |
 
 ### Runbooks
 
@@ -1175,6 +1190,7 @@ infra/terraform/
 ### GitHub Actions workflows
 
 `.github/workflows/`
+
 - `ci-api.yml` — lint, type, test, build, image push
 - `ci-mobile.yml` — lint, type, test, eas build (preview channel on PR)
 - `cd-api.yml` — on tag `api-v*`, deploy to ECS
@@ -1186,6 +1202,7 @@ infra/terraform/
 ### Secrets
 
 Stored in Doppler or AWS Secrets Manager, injected at task start. Categories:
+
 - DB URL, Redis URL
 - JWT private key, public key
 - Paystack secret + public key, webhook secret
@@ -1199,21 +1216,21 @@ Stored in Doppler or AWS Secrets Manager, injected at task start. Categories:
 
 ## 18. Cost Estimate (rough, monthly, USD, MVP scale ~ 1,000 rooms/month)
 
-| Item | Est. |
-|---|---|
-| 2× ECS Fargate task (API, 0.5 vCPU / 1 GB) | $25 |
-| 2× ECS Fargate task (worker) | $25 |
-| Managed Postgres (db.t4g.small) | $30 |
-| Managed Redis (cache.t4g.micro) | $15 |
-| Cloudflare R2 storage (~500 GB) | $7.50 |
-| Cloudflare R2 ops | $5 |
-| Cloudflare Pro (WAF) | $20 |
-| Termii SMS (~10k OTPs @ ₦4 each ≈ $25) | $25 |
-| Expo EAS (Production plan, optional) | $99 |
-| Sentry (Team) | $26 |
-| BetterStack (logs) | $25 |
-| Domain, misc | $5 |
-| **Total** | **~$300/month** |
+| Item                                       | Est.            |
+| ------------------------------------------ | --------------- |
+| 2× ECS Fargate task (API, 0.5 vCPU / 1 GB) | $25             |
+| 2× ECS Fargate task (worker)               | $25             |
+| Managed Postgres (db.t4g.small)            | $30             |
+| Managed Redis (cache.t4g.micro)            | $15             |
+| Cloudflare R2 storage (~500 GB)            | $7.50           |
+| Cloudflare R2 ops                          | $5              |
+| Cloudflare Pro (WAF)                       | $20             |
+| Termii SMS (~10k OTPs @ ₦4 each ≈ $25)     | $25             |
+| Expo EAS (Production plan, optional)       | $99             |
+| Sentry (Team)                              | $26             |
+| BetterStack (logs)                         | $25             |
+| Domain, misc                               | $5              |
+| **Total**                                  | **~$300/month** |
 
 Scaling to 10× volume primarily increases SMS, storage, and compute roughly linearly. Egress stays $0.
 
@@ -1223,24 +1240,24 @@ Scaling to 10× volume primarily increases SMS, storage, and compute roughly lin
 
 ### Resolved (locked in v2.0)
 
-| Decision | Choice |
-|---|---|
-| Brand name | **Sher** |
-| Pricing model | Free to create; post-event paywall. Base ₦1,500 (host, covers 3) + ₦1,000 per extra member (self-paid) |
-| Multi-currency | Yes — Paystack, regional psychological pricing in NGN/USD/GHS/KES/ZAR/GBP/EUR; locked to room at creation |
-| Payment processor | Paystack primary, Flutterwave fallback |
-| Visual identity | Fun, full saturated colors, **no gradients** |
+| Decision          | Choice                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| Brand name        | **Sher**                                                                                                  |
+| Pricing model     | Free to create; post-event paywall. Base ₦1,500 (host, covers 3) + ₦1,000 per extra member (self-paid)    |
+| Multi-currency    | Yes — Paystack, regional psychological pricing in NGN/USD/GHS/KES/ZAR/GBP/EUR; locked to room at creation |
+| Payment processor | Paystack primary, Flutterwave fallback                                                                    |
+| Visual identity   | Fun, full saturated colors, **no gradients**                                                              |
 
 ### Still open (recommend pre-Phase-0 decisions)
 
-1. **Email at signup** — required, optional, or skipped entirely? *Recommend: optional but encouraged, used for receipts and SIM-swap protection.*
-2. **Hosting target** — AWS ECS Fargate or DigitalOcean App Platform. *Recommend: DO App Platform for MVP, migrate to AWS at scale.*
-3. **Video clips** — photos only at launch, or short (5–10s) clips too? *Recommend: photos only; video doubles complexity, storage cost, and processing time.*
-4. **Web gallery** — public/private web counterpart for non-app users? *Recommend: not in MVP.*
-5. **Moderation** — manual reports only at launch, or auto-scan (e.g., Sightengine) from day 1? *Recommend: manual + flag button at launch; auto-scan in Phase 2.*
-6. **Languages** — English only at launch? *Recommend: English-only launch but i18n scaffolding from day 1.*
-7. **Exact font licensing** — Cabinet Grotesk has a commercial license fee; Recoleta similar. *Recommend: confirm budget or substitute (Space Grotesk + Plus Jakarta Sans are free alternatives that fit the brief).*
-8. **Currency override UX** — let users manually switch their currency in Settings, or auto-only? *Recommend: auto with a manual override available, especially for users who travel.*
+1. **Email at signup** — required, optional, or skipped entirely? _Recommend: optional but encouraged, used for receipts and SIM-swap protection._
+2. **Hosting target** — AWS ECS Fargate or DigitalOcean App Platform. _Recommend: DO App Platform for MVP, migrate to AWS at scale._
+3. **Video clips** — photos only at launch, or short (5–10s) clips too? _Recommend: photos only; video doubles complexity, storage cost, and processing time._
+4. **Web gallery** — public/private web counterpart for non-app users? _Recommend: not in MVP._
+5. **Moderation** — manual reports only at launch, or auto-scan (e.g., Sightengine) from day 1? _Recommend: manual + flag button at launch; auto-scan in Phase 2._
+6. **Languages** — English only at launch? _Recommend: English-only launch but i18n scaffolding from day 1._
+7. **Exact font licensing** — Cabinet Grotesk has a commercial license fee; Recoleta similar. _Recommend: confirm budget or substitute (Space Grotesk + Plus Jakarta Sans are free alternatives that fit the brief)._
+8. **Currency override UX** — let users manually switch their currency in Settings, or auto-only? _Recommend: auto with a manual override available, especially for users who travel._
 
 ---
 
@@ -1251,17 +1268,21 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 > Tip for prompting Claude Code: start each phase with `"Read /docs/architecture.md sections X-Y. Then execute Phase N below. Do not skip steps. Run all tests before declaring done. If a decision is ambiguous, ask me."`
 
 ### Phase 0 — Repo & Tooling
+
 **Goal:** Empty monorepo that lints, builds, tests, and runs locally.
+
 - Initialize pnpm + Turborepo monorepo per §4.
 - Shared configs (`packages/config`): ESLint, Prettier, TS, commitlint, husky pre-commit.
 - Dockerfiles + `docker-compose.yml` for Postgres 16, Redis 7, MinIO.
 - GitHub Actions CI skeleton (lint, type, test on PR).
 - `.env.example` for every app.
 - README with local setup steps.
-**Done when:** `pnpm dev` brings up compose + API stub + mobile dev server.
+  **Done when:** `pnpm dev` brings up compose + API stub + mobile dev server.
 
 ### Phase 1 — Backend Foundation
+
 **Goal:** NestJS API skeleton with DB, auth scaffolding (no OTP yet), logging, error handling.
+
 - Scaffold `apps/api` with NestJS.
 - Prisma schema (§5) committed; first migration applied; seed script.
 - Global filters: `HttpExceptionFilter`, validation pipe (class-validator), response envelope interceptor.
@@ -1270,10 +1291,12 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Throttler module (Redis store).
 - Sentry integration.
 - 90%+ test coverage on filters, interceptors, prisma service.
-**Done when:** `POST /v1/health` returns 200, integration tests pass on CI, schema visible in Prisma Studio.
+  **Done when:** `POST /v1/health` returns 200, integration tests pass on CI, schema visible in Prisma Studio.
 
 ### Phase 2 — Phone OTP Auth
+
 **Goal:** End-to-end auth: request → verify → issue JWT pair → refresh → revoke.
+
 - Termii integration (with mock provider for tests/local).
 - `OtpChallenge` lifecycle.
 - JWT module (RS256), key rotation supported.
@@ -1282,10 +1305,12 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - DTOs + Zod validation.
 - AuthGuard, RolesGuard, RoomRoleGuard (membership-based).
 - Tests: happy path, rate limits, attempt lockout, refresh reuse → family revocation, expired challenge, wrong code.
-**Done when:** E2E test signs in, hits `/me`, refreshes, logs out — all green.
+  **Done when:** E2E test signs in, hits `/me`, refreshes, logs out — all green.
 
 ### Phase 3 — Mobile Foundation
+
 **Goal:** RN app boots, navigates, can authenticate, brand system is in place.
+
 - Scaffold `apps/mobile` with Expo + Expo Router.
 - **Implement design tokens from §7.5** (`apps/mobile/theme/tokens.ts`): solid colors only, no gradient utilities, type scale, radius, spacing. Add an ESLint rule that bans `expo-linear-gradient` and `LinearGradient`.
 - Base components: Button, Card, Sticker (rotated chip), JoinCodeDisplay, EmptyState — all using tokens.
@@ -1297,10 +1322,12 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Generated API types (OpenAPI → TS via `openapi-typescript`, or hand-written zod-based client referencing `packages/shared-types`).
 - Sentry RN integration.
 - Maestro flow: open app → sign in → see "My Rooms" empty state.
-**Done when:** A real device can sign in against staging API and persist session across restarts; the contrast audit page passes; no gradient imports exist anywhere.
+  **Done when:** A real device can sign in against staging API and persist session across restarts; the contrast audit page passes; no gradient imports exist anywhere.
 
 ### Phase 4 — Rooms (Create, Join, Membership)
+
 **Goal:** Hosts can create rooms for free instantly; guests can join via code/QR; memberships enforced; per-member unlock state tracked.
+
 - Backend: room module, join code generator (Crockford base32, 6 chars, no ambiguous chars, collision-checked), QR token signer (HMAC), membership service with `joinOrder` assignment, policies.
 - All Rooms endpoints in §6 except `/unlock/*` and `/retention/*` (next phase).
 - Membership `unlockState` defaults to LOCKED on join. Members ≤ `baseCapacity` are flagged but not auto-EXEMPT until BASE_UNLOCK happens.
@@ -1309,10 +1336,12 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Socket.IO gateway with `/rooms` namespace, member join/leave events.
 - Mobile: Create flow (free, instant), Join flow (manual code + QR scan via Vision Camera), Room dashboard screen, "extra member" warning sheet when host invites a 4th+.
 - E2E: host creates room (free), guest joins via QR, host invites a 4th member and sees the per-extra-member fee warning in their local currency.
-**Done when:** Two simulators join the same room, see each other in members list, and the host sees a correctly-priced per-extra warning when adding the 4th member.
+  **Done when:** Two simulators join the same room, see each other in members list, and the host sees a correctly-priced per-extra warning when adding the 4th member.
 
 ### Phase 5 — Payments & Post-Event Paywall (Paystack + Flutterwave, multi-currency)
+
 **Goal:** Real money moves at end of event; per-member unlocks are idempotent; multi-currency works.
+
 - Backend:
   - `PaymentsModule`, `PaystackClient`, `FlutterwaveClient` implementing a shared `PaymentProvider` interface.
   - `WebhookController` with signature verification (HMAC-SHA512 for Paystack, hash compare for Flutterwave).
@@ -1337,10 +1366,12 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
   - Currency resolution unit tests for all supported countries → currencies.
   - End-to-end: host ends room → pays BASE_UNLOCK with Paystack test keys → first 3 members go EXEMPT → gallery unlocks for them.
   - End-to-end: extra member pays MEMBER_UNLOCK → their access unlocks independently; other extras stay LOCKED.
-**Done when:** Both flows complete with Paystack test cards in NGN and USD; webhook idempotency verified; the four authorization checks all reject correctly.
+    **Done when:** Both flows complete with Paystack test cards in NGN and USD; webhook idempotency verified; the four authorization checks all reject correctly.
 
 ### Phase 6 — Photo Capture & Upload
+
 **Goal:** Members can capture, queue, and upload photos. Gallery updates live.
+
 - Mobile: Camera screen with Vision Camera, capture writes to FileSystem queue, SQLite-backed upload queue with retry/backoff, progress UI.
 - Filters (initial 8) via Skia.
 - EXIF read for `takenAt`.
@@ -1348,17 +1379,21 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Gallery screen (FlashList, signed-URL refresh, swipe viewer).
 - Socket.IO `photo:new` triggers TanStack Query invalidation.
 - Tests: queue resumes after kill, retry exhausts gracefully, MIME spoof rejected, oversize rejected, plan cap enforced.
-**Done when:** Two devices capture simultaneously; both see each other's photos within seconds; killing the app mid-upload resumes on relaunch.
+  **Done when:** Two devices capture simultaneously; both see each other's photos within seconds; killing the app mid-upload resumes on relaunch.
 
 ### Phase 7 — Engagement & Downloads
+
 **Goal:** Likes, individual + bulk download, photo deletion.
+
 - Backend: reactions module, photo deletion (auth: uploader or host), bulk zip job.
 - Mobile: like button, single download, bulk download with progress.
 - Push notifications wired through Expo (registration, sending, receipts).
-**Done when:** A user can like a friend's photo and bulk-download the whole gallery as a zip.
+  **Done when:** A user can like a friend's photo and bulk-download the whole gallery as a zip.
 
 ### Phase 8 — Lifecycle, Retention, Notifications
+
 **Goal:** Rooms end (paywall engages), photos expire, members can extend, retroactive unlock is possible.
+
 - BullMQ repeatables for `room.tick` (advances ACTIVE→ENDED at `endsAt`), `retention.notify`, `retention.purge`, `payment.reconcile`, `auth.cleanup`, `device.prune`.
 - Retention extension flow (any unlocked member can pay → new RetentionWindow → recompute `Room.retentionUntil`, capped at 365 days post-event).
 - LOCKED members can still pay MEMBER_UNLOCK retroactively any time before `retentionUntil` — verify they retroactively gain access and the gallery query returns photos for them.
@@ -1367,9 +1402,10 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
   - Create room → end it → 30 days pass with no unlocks → photos purged.
   - Create room → end it → host pays BASE_UNLOCK → 15 days later extra pays MEMBER_UNLOCK → both still have access.
   - Extension by 3 months pushes purge out by 3 months.
-**Done when:** All time-warped scenarios above pass; push notifications fire at correct offsets in staging.
+    **Done when:** All time-warped scenarios above pass; push notifications fire at correct offsets in staging.
 
 ### Phase 9 — Security Hardening
+
 - Certificate pinning in mobile.
 - App attestation (Play Integrity + App Attest) on high-risk endpoints.
 - Rate-limit tuning under load.
@@ -1377,23 +1413,26 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Secret scanning gates.
 - PII redaction audit in logs (manual + automated test).
 - NDPR pages: privacy policy, terms, data export, account deletion.
-**Done when:** External pen test checklist (OWASP MASTG) passes self-review.
+  **Done when:** External pen test checklist (OWASP MASTG) passes self-review.
 
 ### Phase 10 — Observability & Ops
+
 - Grafana dashboards committed as JSON.
 - Alert rules in code.
 - Runbooks written.
 - Load test passes SLOs from §15.
-**Done when:** Synthetic load of 500 concurrent uploads stays within SLOs and dashboards show meaningful data.
+  **Done when:** Synthetic load of 500 concurrent uploads stays within SLOs and dashboards show meaningful data.
 
 ### Phase 11 — Release Engineering
+
 - Production Terraform applied.
 - EAS production builds submitted to both stores (TestFlight + Play Internal Testing).
 - Phased rollout configuration.
 - Crash-rate gate documented and dry-run.
-**Done when:** Production users can install from the stores and complete the create-pay-capture-download loop.
+  **Done when:** Production users can install from the stores and complete the create-pay-capture-download loop.
 
 ### Phase 12 — Polish & Pre-launch
+
 - Empty states, error states, loading skeletons reviewed.
 - Accessibility pass (labels, contrast, dynamic type).
 - Copy review.
@@ -1433,6 +1472,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 ## 23. Changelog
 
 **v2.0 — Brand & business model finalized**
+
 - Brand name set to **Sher**.
 - Replaced pre-event "checkout to create" with **free-to-create + post-event paywall** model.
 - Introduced **per-member unlock state** (`LOCKED` / `UNLOCKED` / `EXEMPT`) and `Membership.joinOrder`.
@@ -1447,4 +1487,4 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 
 **v1.0** — Initial architecture document covering the original "pay-up-front Plan tier" model.
 
-*End of architecture document. Update version on every material change.*
+_End of architecture document. Update version on every material change._
