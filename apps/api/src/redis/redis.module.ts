@@ -10,7 +10,6 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
       provide: REDIS_CLIENT,
       useFactory: (): Redis => {
         return new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379', {
-          lazyConnect: true,
           enableOfflineQueue: false,
           maxRetriesPerRequest: 1,
         });
