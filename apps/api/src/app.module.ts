@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/c
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { DevOtpModule } from './dev/dev-otp.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -10,6 +11,8 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   imports: [
+    // DevOtpModule is development-only: the route structurally does not exist in other envs.
+    ...(process.env['NODE_ENV'] === 'development' ? [DevOtpModule] : []),
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env['LOG_LEVEL'] ?? 'info',

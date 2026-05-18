@@ -6,12 +6,12 @@ Collaborative event photography. Groups join a Room, capture photos together, sh
 
 ## Prerequisites
 
-| Tool | Version |
-|---|---|
-| Node.js | 20+ |
-| pnpm | 9+ |
-| Docker + Docker Compose | any recent |
-| Expo CLI | installed via pnpm (workspace dep) |
+| Tool                    | Version                            |
+| ----------------------- | ---------------------------------- |
+| Node.js                 | 20+                                |
+| pnpm                    | 9+                                 |
+| Docker + Docker Compose | any recent                         |
+| Expo CLI                | installed via pnpm (workspace dep) |
 
 ---
 
@@ -37,6 +37,15 @@ cp apps/mobile/.env.example apps/mobile/.env
 
 For local dev the defaults already point to the Docker services below — you only need to add real provider keys (Paystack, Termii, etc.) when testing those flows. Set `OTP_MOCK=true` in `apps/api/.env` to skip real SMS during development.
 
+**Dev-only OTP retrieval:** when the API is started with `NODE_ENV=development` and `OTP_MOCK=true`, after calling `POST /v1/auth/otp/request` you can retrieve the generated code without a real SMS:
+
+```bash
+curl http://localhost:3000/v1/auth/_dev/last-otp
+# { "data": { "code": "048213" } }
+```
+
+This endpoint does not exist in staging or production — it is structurally absent from the application graph outside of `NODE_ENV=development`.
+
 ### 3. Start infrastructure
 
 ```bash
@@ -44,6 +53,7 @@ docker compose up -d
 ```
 
 This starts:
+
 - **Postgres 16** on `localhost:5432` (db: `sher_dev`, user: `sher`)
 - **Redis 7** on `localhost:6379`
 - **MinIO** (R2 emulator) on `localhost:9000` (console at `localhost:9001`)
@@ -67,6 +77,7 @@ pnpm dev
 ```
 
 Turborepo starts all workspaces in parallel:
+
 - API: `http://localhost:3000` — try `GET /v1/health`
 - Worker: runs as a standalone NestJS context
 - Mobile: Expo Metro bundler — follow the QR / press `i` for iOS simulator, `a` for Android
