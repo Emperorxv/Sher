@@ -65,22 +65,25 @@ enum UnlockState {
 }
 
 model User {
-  id          String     @id @default(cuid())
-  phone       String     @unique // E.164 e.g. +2348012345678
-  email       String?    @unique
-  displayName String?
-  avatarUrl   String?
-  status      UserStatus @default(ACTIVE)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  deletedAt   DateTime?
+  id               String     @id @default(cuid())
+  phone            String     @unique // E.164 e.g. +2348012345678
+  email            String     @unique // Required; collected at first OTP verify, verified async
+  emailVerified    Boolean    @default(false)
+  marketingConsent Boolean    @default(false)
+  displayName      String?
+  avatarUrl        String?
+  status           UserStatus @default(ACTIVE)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
 
-  hostedRooms  Room[]          @relation("RoomHost")
-  memberships  Membership[]
-  photos       Photo[]
-  payments     Payment[]
-  deviceTokens DeviceToken[]
-  reactions    PhotoReaction[]
+  hostedRooms   Room[]          @relation("RoomHost")
+  memberships   Membership[]
+  photos        Photo[]
+  payments      Payment[]
+  deviceTokens  DeviceToken[]
+  reactions     PhotoReaction[]
+  refreshTokens RefreshToken[]
 
   @@index([phone])
 }
@@ -224,6 +227,20 @@ model OtpChallenge {
   createdAt  DateTime  @default(now())
 
   @@index([phone, createdAt(sort: Desc)])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique // SHA-256 hex of raw token
+  familyId  String // groups a token and all its rotated descendants
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
 }
 
 model AuditLog {

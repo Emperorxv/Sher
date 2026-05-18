@@ -12,6 +12,7 @@
 
 1. **Host** creates a Room **for free** — no payment up front, instant access. Default capacity is 3 members (host + 2). The host gets a QR code immediately.
 2. **Guests** scan the QR code (or enter a 6-character join code), authenticate via phone OTP, join the Room.
+   On **first-ever sign-in**, the app immediately prompts for an email address and an optional marketing-consent checkbox. The user is **not blocked** — they proceed into the app the moment OTP verifies. Email verification happens asynchronously (a confirmation link is sent via Resend). Transactional emails (receipts, security alerts) are always sent regardless of `emailVerified` status; marketing emails require `marketingConsent = true`.
 3. If the host wants to invite a **4th, 5th, or Nth member**, they are warned in-app that each additional member will cost their guests a small unlock fee at the end of the event. The host can still invite them; the warning is informational, not blocking.
 4. Members **capture photos** in-app. Photos upload in the background and appear in a shared gallery for all members in near-real-time. **The gallery is fully visible and usable during the event** — paywall has not engaged yet.
 5. When the Room **ends** (host ends it manually or `endsAt` is reached), the gallery becomes **paywalled**:
@@ -179,7 +180,9 @@ enum UnlockState     { LOCKED UNLOCKED EXEMPT }    // EXEMPT = covered by base u
 model User {
   id            String   @id @default(cuid())
   phone         String   @unique               // E.164 e.g. +2348012345678
-  email         String?  @unique
+  email         String   @unique               // Required; collected post-OTP, verified asynchronously
+  emailVerified Boolean  @default(false)
+  marketingConsent Boolean @default(false)
   displayName   String?
   avatarUrl     String?
   status        UserStatus @default(ACTIVE)
@@ -433,23 +436,25 @@ All responses follow:
 
 ### Auth
 
-| Method | Path                | Purpose                                                         |
-| ------ | ------------------- | --------------------------------------------------------------- |
-| POST   | `/auth/otp/request` | `{ phone }` → sends OTP, returns `challengeId`                  |
-| POST   | `/auth/otp/verify`  | `{ challengeId, code }` → `{ accessToken, refreshToken, user }` |
-| POST   | `/auth/refresh`     | `{ refreshToken }` → new pair                                   |
-| POST   | `/auth/logout`      | revokes refresh token                                           |
-| POST   | `/auth/devices`     | register Expo push token                                        |
-| DELETE | `/auth/devices/:id` | unregister                                                      |
-| DELETE | `/auth/account`     | soft-delete (NDPR right to erasure)                             |
+| Method | Path                 | Purpose                                                                                               |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/otp/request`  | `{ phone }` → sends OTP, returns `challengeId`                                                        |
+| POST   | `/auth/otp/verify`   | `{ challengeId, code }` → `{ accessToken, refreshToken, user, isNewUser }`                            |
+| POST   | `/auth/refresh`      | `{ refreshToken }` → new pair                                                                         |
+| POST   | `/auth/logout`       | revokes refresh token                                                                                 |
+| POST   | `/auth/email/verify` | `{ token }` (from email link) → sets `User.emailVerified = true`; token is signed, 15-min, single-use |
+| POST   | `/auth/email/resend` | resend verification email (3 per user per hour)                                                       |
+| POST   | `/auth/devices`      | register Expo push token                                                                              |
+| DELETE | `/auth/devices/:id`  | unregister                                                                                            |
+| DELETE | `/auth/account`      | soft-delete (NDPR right to erasure)                                                                   |
 
 ### Users
 
-| Method | Path                    | Purpose                        |
-| ------ | ----------------------- | ------------------------------ |
-| GET    | `/me`                   | current profile + active rooms |
-| PATCH  | `/me`                   | update displayName/avatar      |
-| POST   | `/me/avatar/upload-url` | presigned PUT for avatar       |
+| Method | Path                    | Purpose                                                        |
+| ------ | ----------------------- | -------------------------------------------------------------- |
+| GET    | `/me`                   | current profile + active rooms                                 |
+| PATCH  | `/me`                   | update `displayName`, `avatarUrl`, `email`, `marketingConsent` |
+| POST   | `/me/avatar/upload-url` | presigned PUT for avatar                                       |
 
 ### Rooms
 
@@ -684,6 +689,7 @@ Phase 2. Keep tokens namespaced so swapping later is mechanical.
 3. Client posts `{ challengeId, code }` to `/auth/otp/verify`.
 4. API verifies, increments `attempts`, locks out after 5 wrong tries.
 5. On success: upserts `User`, issues JWT pair.
+6. **New user** (`isNewUser: true` in response): `POST /auth/otp/verify` accepts `{ challengeId, code, email, marketingConsent? }` — `email` is **required** when this is a first-time sign-up and is stored on the User record immediately. `marketingConsent` defaults to `false` if omitted. API enqueues an async email confirmation job (Resend stub in Phase 2). Returning users do not need to supply `email` in this request.
 
 ### JWT design
 
@@ -852,7 +858,7 @@ Response: {
 
 ### 9.8 Receipts
 
-Successful payments trigger an email receipt via Resend (if user has email) and a push notification. Receipt includes: payment ID, room name, purpose, amount + currency, date, support link. Receipts are also accessible in-app under Profile → Payments.
+Successful payments trigger an email receipt via Resend (transactional — always sent to the user's email regardless of `emailVerified` status) and a push notification. Receipt includes: payment ID, room name, purpose, amount + currency, date, support link. Receipts are also accessible in-app under Profile → Payments.
 
 ---
 
@@ -988,23 +994,23 @@ Notes:
 
 ### Threat model (top risks → mitigation)
 
-| Threat                          | Mitigation                                                                                                                                                 |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Photos leaking to non-members   | Private R2 + signed URLs only; membership check on every read; never expose R2 base URL                                                                    |
-| Account takeover via SIM swap   | Risk inherent to phone-OTP; mitigate with device binding (new device → email confirmation if email present; otherwise 24h cool-down for sensitive actions) |
-| OTP brute force                 | 5 attempts per challenge, rate limit per phone + IP, exponential lockout                                                                                   |
-| Stolen JWT                      | Short access TTL (15 min), refresh rotation with reuse detection, secure-store                                                                             |
-| Reverse-engineered API          | Certificate pinning (mobile), per-user rate limits, app attestation (Play Integrity, App Attest) on sensitive endpoints — Phase 2                          |
-| Payment tampering               | Webhook signature verification, amount + ref check, idempotency, reconciliation                                                                            |
-| Malicious uploads (CSAM, abuse) | Mandatory moderation queue for flagged content; auto-scan in Phase 2; takedown SLA documented                                                              |
-| EXIF metadata leaking GPS       | Strip EXIF server-side on post-process                                                                                                                     |
-| DoS                             | Cloudflare WAF + rate limits; R2 absorbs upload traffic so API isn't bottleneck                                                                            |
-| Data at rest                    | Postgres encryption at rest (provider default), R2 server-side encryption, secrets in Secrets Manager                                                      |
-| Data in transit                 | TLS 1.3 everywhere, HSTS, no plaintext fallback                                                                                                            |
-| SQL injection                   | Prisma parameterized queries (no raw SQL except reviewed migrations)                                                                                       |
-| Mass assignment                 | DTOs validated with class-validator / Zod; whitelist fields                                                                                                |
-| Insecure deserialization        | No `eval`, no untrusted JSON.parse without schema                                                                                                          |
-| Dependency vulns                | Dependabot + Snyk in CI; `pnpm audit` gate                                                                                                                 |
+| Threat                          | Mitigation                                                                                                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Photos leaking to non-members   | Private R2 + signed URLs only; membership check on every read; never expose R2 base URL                                                                                                                                      |
+| Account takeover via SIM swap   | Risk inherent to phone-OTP; mitigate with device binding (new device → email confirmation — email is always present post-signup; fallback 24h cool-down applies only if `emailVerified = false` at time of new-device login) |
+| OTP brute force                 | 5 attempts per challenge, rate limit per phone + IP, exponential lockout                                                                                                                                                     |
+| Stolen JWT                      | Short access TTL (15 min), refresh rotation with reuse detection, secure-store                                                                                                                                               |
+| Reverse-engineered API          | Certificate pinning (mobile), per-user rate limits, app attestation (Play Integrity, App Attest) on sensitive endpoints — Phase 2                                                                                            |
+| Payment tampering               | Webhook signature verification, amount + ref check, idempotency, reconciliation                                                                                                                                              |
+| Malicious uploads (CSAM, abuse) | Mandatory moderation queue for flagged content; auto-scan in Phase 2; takedown SLA documented                                                                                                                                |
+| EXIF metadata leaking GPS       | Strip EXIF server-side on post-process                                                                                                                                                                                       |
+| DoS                             | Cloudflare WAF + rate limits; R2 absorbs upload traffic so API isn't bottleneck                                                                                                                                              |
+| Data at rest                    | Postgres encryption at rest (provider default), R2 server-side encryption, secrets in Secrets Manager                                                                                                                        |
+| Data in transit                 | TLS 1.3 everywhere, HSTS, no plaintext fallback                                                                                                                                                                              |
+| SQL injection                   | Prisma parameterized queries (no raw SQL except reviewed migrations)                                                                                                                                                         |
+| Mass assignment                 | DTOs validated with class-validator / Zod; whitelist fields                                                                                                                                                                  |
+| Insecure deserialization        | No `eval`, no untrusted JSON.parse without schema                                                                                                                                                                            |
+| Dependency vulns                | Dependabot + Snyk in CI; `pnpm audit` gate                                                                                                                                                                                   |
 
 ### OWASP Mobile Top 10 — concrete actions
 
@@ -1240,24 +1246,24 @@ Scaling to 10× volume primarily increases SMS, storage, and compute roughly lin
 
 ### Resolved (locked in v2.0)
 
-| Decision          | Choice                                                                                                    |
-| ----------------- | --------------------------------------------------------------------------------------------------------- |
-| Brand name        | **Sher**                                                                                                  |
-| Pricing model     | Free to create; post-event paywall. Base ₦1,500 (host, covers 3) + ₦1,000 per extra member (self-paid)    |
-| Multi-currency    | Yes — Paystack, regional psychological pricing in NGN/USD/GHS/KES/ZAR/GBP/EUR; locked to room at creation |
-| Payment processor | Paystack primary, Flutterwave fallback                                                                    |
-| Visual identity   | Fun, full saturated colors, **no gradients**                                                              |
+| Decision          | Choice                                                                                                                                                                                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Brand name        | **Sher**                                                                                                                                                                                                                                                                                 |
+| Pricing model     | Free to create; post-event paywall. Base ₦1,500 (host, covers 3) + ₦1,000 per extra member (self-paid)                                                                                                                                                                                   |
+| Multi-currency    | Yes — Paystack, regional psychological pricing in NGN/USD/GHS/KES/ZAR/GBP/EUR; locked to room at creation                                                                                                                                                                                |
+| Payment processor | Paystack primary, Flutterwave fallback                                                                                                                                                                                                                                                   |
+| Visual identity   | Fun, full saturated colors, **no gradients**                                                                                                                                                                                                                                             |
+| Email at signup   | **Required and unique.** Collected in-app after first OTP verify (non-blocking). Verified async via Resend confirmation link. `emailVerified Boolean @default(false)`. `marketingConsent Boolean @default(false)`. Transactional email always allowed; marketing email requires consent. |
 
 ### Still open (recommend pre-Phase-0 decisions)
 
-1. **Email at signup** — required, optional, or skipped entirely? _Recommend: optional but encouraged, used for receipts and SIM-swap protection._
-2. **Hosting target** — AWS ECS Fargate or DigitalOcean App Platform. _Recommend: DO App Platform for MVP, migrate to AWS at scale._
-3. **Video clips** — photos only at launch, or short (5–10s) clips too? _Recommend: photos only; video doubles complexity, storage cost, and processing time._
-4. **Web gallery** — public/private web counterpart for non-app users? _Recommend: not in MVP._
-5. **Moderation** — manual reports only at launch, or auto-scan (e.g., Sightengine) from day 1? _Recommend: manual + flag button at launch; auto-scan in Phase 2._
-6. **Languages** — English only at launch? _Recommend: English-only launch but i18n scaffolding from day 1._
-7. **Exact font licensing** — Cabinet Grotesk has a commercial license fee; Recoleta similar. _Recommend: confirm budget or substitute (Space Grotesk + Plus Jakarta Sans are free alternatives that fit the brief)._
-8. **Currency override UX** — let users manually switch their currency in Settings, or auto-only? _Recommend: auto with a manual override available, especially for users who travel._
+1. **Hosting target** — AWS ECS Fargate or DigitalOcean App Platform. _Recommend: DO App Platform for MVP, migrate to AWS at scale._
+2. **Video clips** — photos only at launch, or short (5–10s) clips too? _Recommend: photos only; video doubles complexity, storage cost, and processing time._
+3. **Web gallery** — public/private web counterpart for non-app users? _Recommend: not in MVP._
+4. **Moderation** — manual reports only at launch, or auto-scan (e.g., Sightengine) from day 1? _Recommend: manual + flag button at launch; auto-scan in Phase 2._
+5. **Languages** — English only at launch? _Recommend: English-only launch but i18n scaffolding from day 1._
+6. **Exact font licensing** — Cabinet Grotesk has a commercial license fee; Recoleta similar. _Recommend: confirm budget or substitute (Space Grotesk + Plus Jakarta Sans are free alternatives that fit the brief)._
+7. **Currency override UX** — let users manually switch their currency in Settings, or auto-only? _Recommend: auto with a manual override available, especially for users who travel._
 
 ---
 
@@ -1470,6 +1476,19 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 ---
 
 ## 23. Changelog
+
+**v2.1 — Email required at signup**
+
+- `User.email` changed from `String? @unique` (optional) to `String @unique` (required).
+- Added `User.emailVerified Boolean @default(false)` and `User.marketingConsent Boolean @default(false)`.
+- Email is collected immediately after first OTP verify (non-blocking; user proceeds into app).
+- Email verification is asynchronous via Resend confirmation link (`POST /auth/email/verify`).
+- Transactional emails (receipts, security) always sent; marketing emails gated on `marketingConsent`.
+- Added `/auth/email/verify` and `/auth/email/resend` endpoints to §6.
+- `POST /auth/otp/verify` response now includes `isNewUser: boolean`.
+- `PATCH /me` now accepts `email` and `marketingConsent` fields.
+- §14 SIM-swap mitigation updated: device binding now always uses email (always present post-signup).
+- §19 "Email at signup" moved from open to resolved.
 
 **v2.0 — Brand & business model finalized**
 

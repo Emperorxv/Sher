@@ -2,9 +2,11 @@ import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module, RequestMethod } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { UsersModule } from './users/users.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
@@ -30,6 +32,8 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     PrismaModule,
     RedisModule,
     HealthModule,
+    AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule implements NestModule {

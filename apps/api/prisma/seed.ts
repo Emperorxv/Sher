@@ -8,6 +8,8 @@ async function main(): Promise<void> {
     update: {},
     create: {
       phone: '+2348000000001',
+      email: 'devhost@sher.dev',
+      emailVerified: true,
       displayName: 'Dev Host',
       status: UserStatus.ACTIVE,
     },
@@ -18,6 +20,8 @@ async function main(): Promise<void> {
     update: {},
     create: {
       phone: '+2348000000002',
+      email: 'devguest@sher.dev',
+      emailVerified: false,
       displayName: 'Dev Guest',
       status: UserStatus.ACTIVE,
     },
