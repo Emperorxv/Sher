@@ -65,6 +65,9 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "setupFiles": [
+      "<rootDir>/test-setup.ts"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
@@ -75,7 +78,8 @@
       "node_modules",
       "\\.module\\.ts$",
       "main\\.ts$",
-      "\\.dto\\.ts$"
+      "\\.dto\\.ts$",
+      "test-setup\\.ts$"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
