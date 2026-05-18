@@ -1,6 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import type { PrismaService } from '../../prisma/prisma.service';
+// PrismaService is a NestJS DI token — must be a value import, not import type.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PrismaService } from '../../prisma/prisma.service';
 
 const DEFAULT_REFRESH_TTL_DAYS = 30;
 

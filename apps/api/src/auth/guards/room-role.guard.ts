@@ -1,6 +1,8 @@
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
-import type { Reflector } from '@nestjs/core';
+// Reflector is a NestJS DI token — must be a value import, not import type.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { Reflector } from '@nestjs/core';
 
 export const ROOM_ROLE_KEY = 'roomRole';
 

@@ -1,9 +1,12 @@
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import type { Reflector } from '@nestjs/core';
+// Reflector / TokenService are NestJS DI tokens — must be value imports, not import type.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { TokenService } from '../token/token.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { TokenService } from '../token/token.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
