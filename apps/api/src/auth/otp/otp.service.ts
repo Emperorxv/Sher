@@ -1,12 +1,8 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
-// PrismaService / TermiiClient / TermiiMockClient are NestJS DI tokens — must be value imports.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PrismaService } from '../../prisma/prisma.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TermiiClient } from './termii.client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TermiiMockClient } from './termii-mock.client';
 
 export const OTP_MAX_ATTEMPTS = 5;

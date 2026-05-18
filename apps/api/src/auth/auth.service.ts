@@ -1,17 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { User } from '@prisma/client';
-// PrismaService / OtpService / TokenService / RefreshTokenService / EmailVerifyService are
-// NestJS DI tokens resolved via emitDecoratorMetadata — must be value imports, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { OtpVerifyDto } from './dto/otp-verify.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { EmailVerifyService } from './email/email-verify.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OtpService } from './otp/otp.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RefreshTokenService } from './token/refresh-token.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TokenService } from './token/token.service';
 
 export interface TokenPair {

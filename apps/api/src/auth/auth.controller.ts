@@ -8,29 +8,18 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import type { Platform } from '@prisma/client';
-// PrismaService / AuthService / EmailVerifyService are NestJS DI tokens — must be value imports.
-// DTO classes are used as @Body() parameter types; emitDecoratorMetadata must see the real class.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { Platform } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuthService } from './auth.service';
-import type { AuthenticatedUser } from './auth.types';
+import { AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { EmailVerifyDto } from './dto/email-verify.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { LogoutDto } from './dto/logout.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OtpRequestDto } from './dto/otp-request.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OtpVerifyDto } from './dto/otp-verify.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RefreshDto } from './dto/refresh.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RegisterDeviceDto } from './dto/register-device.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { EmailVerifyService } from './email/email-verify.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 

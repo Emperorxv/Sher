@@ -12,7 +12,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { generateKeyPairSync } from 'crypto';
-import type { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { ResponseEnvelopeInterceptor } from '../common/interceptors/response-envelope.interceptor';

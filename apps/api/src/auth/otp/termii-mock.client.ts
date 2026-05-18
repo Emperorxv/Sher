@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { SmsResult } from './termii.client';
+import { SmsResult } from './termii.client';
 
 /**
  * Drop-in replacement for TermiiClient used when OTP_MOCK=true (local dev + tests).

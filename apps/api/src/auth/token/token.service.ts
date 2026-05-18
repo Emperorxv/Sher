@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
-// JwtService is a NestJS DI token — must be a value import, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
-import type { AccessTokenPayload, EmailVerifyTokenPayload } from '../auth.types';
+import { AccessTokenPayload, EmailVerifyTokenPayload } from '../auth.types';
 
 const EMAIL_VERIFY_TTL_SECONDS = 900; // 15 min
 

@@ -1,4 +1,4 @@
-import type { ArgumentsHost } from '@nestjs/common';
+import { ArgumentsHost } from '@nestjs/common';
 import {
   BadRequestException,
   HttpException,
@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import { Response } from 'express';
 import { HttpExceptionFilter } from './http-exception.filter';
 
 function makeHost(mockResponse: Partial<Response>): ArgumentsHost {

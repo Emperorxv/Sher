@@ -1,5 +1,5 @@
 import { HttpStatus, ValidationPipe } from '@nestjs/common';
-import type { CanActivate, ExecutionContext, INestApplication } from '@nestjs/common';
+import { CanActivate, ExecutionContext, INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';

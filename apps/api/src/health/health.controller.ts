@@ -1,8 +1,6 @@
 import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
-import type { Redis } from 'ioredis';
+import { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-// PrismaService is used as a DI token at runtime — must be a value import, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PrismaService } from '../prisma/prisma.service';
 
 interface HealthResponse {

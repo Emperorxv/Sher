@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 describe('RequestIdMiddleware', () => {

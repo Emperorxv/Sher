@@ -1,4 +1,4 @@
-import type { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
 import { RolesGuard } from './roles.guard';
 
 function mockContext(): ExecutionContext {

@@ -1,4 +1,4 @@
-import type { CallHandler, ExecutionContext } from '@nestjs/common';
+import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { of } from 'rxjs';
 import { ResponseEnvelopeInterceptor } from './response-envelope.interceptor';
 

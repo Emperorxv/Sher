@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import type { OtpVerifyDto } from './dto/otp-verify.dto';
+import { OtpVerifyDto } from './dto/otp-verify.dto';
 
 const MOCK_USER = {
   id: 'user-id',

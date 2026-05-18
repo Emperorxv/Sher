@@ -1,8 +1,8 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { OTP_MAX_ATTEMPTS, OTP_RATE_LIMIT_PER_HOUR, OtpService } from './otp.service';
-import type { TermiiClient } from './termii.client';
-import type { TermiiMockClient } from './termii-mock.client';
+import { TermiiClient } from './termii.client';
+import { TermiiMockClient } from './termii-mock.client';
 
 const VALID_CODE = '123456';
 const VALID_HASH = bcrypt.hashSync(VALID_CODE, 1); // low rounds for test speed

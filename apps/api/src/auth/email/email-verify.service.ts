@@ -1,8 +1,5 @@
 import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-// PrismaService / TokenService are NestJS DI tokens — must be value imports, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PrismaService } from '../../prisma/prisma.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TokenService } from '../token/token.service';
 
 /**

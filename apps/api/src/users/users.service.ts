@@ -1,11 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { User } from '@prisma/client';
-// PrismaService / EmailVerifyService are NestJS DI tokens — must be value imports, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { EmailVerifyService } from '../auth/email/email-verify.service';
-import type { PatchMeDto } from './dto/patch-me.dto';
+import { PatchMeDto } from './dto/patch-me.dto';
 
 export type PublicUser = Pick<
   User,

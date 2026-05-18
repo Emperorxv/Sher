@@ -1,11 +1,7 @@
-import type { CanActivate, ExecutionContext } from '@nestjs/common';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-// Reflector / TokenService are NestJS DI tokens — must be value imports, not import type.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
+import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TokenService } from '../token/token.service';
 
 @Injectable()

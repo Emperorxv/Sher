@@ -26,4 +26,15 @@ module.exports = [
       'no-console': 'warn',
     },
   },
+  {
+    // NestJS resolves DI tokens via emitDecoratorMetadata at runtime.
+    // `import type` erases the class reference so TypeScript emits Object instead of the
+    // real constructor token and NestJS DI silently fails. Override the base rule for API
+    // and worker packages so the lint-staged auto-fixer converts type-only imports TO
+    // value imports, not the reverse. See packages/config/eslint-node.js for rationale.
+    files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'no-type-imports' }],
+    },
+  },
 ];
