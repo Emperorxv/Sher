@@ -28,6 +28,8 @@ const reactNativeConfig = [
       'sher-brand': { rules: { 'no-gradient': noGradientRule } },
     },
     rules: {
+      // React Native has no emitDecoratorMetadata DI issue, so prefer explicit `import type`.
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       'sher-brand/no-gradient': 'error',
     },
   },
