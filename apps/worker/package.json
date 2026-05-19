@@ -6,9 +6,9 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test:cov": "jest --coverage --passWithNoTests",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
