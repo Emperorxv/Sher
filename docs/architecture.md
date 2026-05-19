@@ -633,16 +633,24 @@ These are starter values — tune in the design tool, then sync back to code. St
 
 ### Typography
 
-- **Display / Headings:** `Cabinet Grotesk` (or `Recoleta` if licensing easier) — geometric, friendly, bold weights only for headings.
-- **Body:** `Inter` — clean, multi-script, great Naira/dollar number rendering.
-- **Mono (optional):** `JetBrains Mono` — for join codes ("ABC4F7").
+Single typeface: **Roboto** (Apache 2.0, free). Weight contrast drives hierarchy — no second family needed.
+
+| Role       | Weight           | In code                               |
+| ---------- | ---------------- | ------------------------------------- |
+| Display    | Black 900        | `Roboto_900Black`                     |
+| Heading    | Bold 700         | `Roboto_700Bold`                      |
+| Label / UI | Medium 500       | `Roboto_500Medium`                    |
+| Body       | Regular 400      | `Roboto_400Regular`                   |
+| Caption    | Regular 400      | `Roboto_400Regular` (12 pt)           |
+| Join code  | System monospace | `Platform.select` — no extra download |
 
 Type scale (in pt, mobile):
 
-- Display: 40 / 32 / 26
-- Heading: 22 / 18
-- Body: 16 / 14
-- Caption: 12
+- Display: 40 / 32 / 26 — Roboto Black
+- Heading: 22 / 18 — Roboto Bold
+- Label: 16 / 14 — Roboto Medium
+- Body: 16 / 14 — Roboto Regular
+- Caption: 12 — Roboto Regular
 - Join code (special): 32, monospace, letter-spaced
 
 ### Component conventions
@@ -1262,7 +1270,7 @@ Scaling to 10× volume primarily increases SMS, storage, and compute roughly lin
 3. **Web gallery** — public/private web counterpart for non-app users? _Recommend: not in MVP._
 4. **Moderation** — manual reports only at launch, or auto-scan (e.g., Sightengine) from day 1? _Recommend: manual + flag button at launch; auto-scan in Phase 2._
 5. **Languages** — English only at launch? _Recommend: English-only launch but i18n scaffolding from day 1._
-6. **Exact font licensing** — Cabinet Grotesk has a commercial license fee; Recoleta similar. _Recommend: confirm budget or substitute (Space Grotesk + Plus Jakarta Sans are free alternatives that fit the brief)._
+6. **Exact font licensing** — **LOCKED: Roboto (Apache 2.0), single family, weight-based hierarchy. No licensing cost.** Cabinet Grotesk / Recoleta / Inter dropped.
 7. **Currency override UX** — let users manually switch their currency in Settings, or auto-only? _Recommend: auto with a manual override available, especially for users who travel._
 
 ---
