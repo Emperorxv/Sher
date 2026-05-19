@@ -672,7 +672,7 @@ Type scale (in pt, mobile):
 ### Accessibility (non-negotiable, even with the fun look)
 
 - All color combinations meet WCAG AA contrast (4.5:1 normal text, 3:1 large text).
-- Primary on cream: 4.6:1 ✓. Coal on cream: 18:1 ✓. Pre-test all combinations and add them to a Storybook contrast audit page.
+- `colors.primary` (#FF3B6B) on `colors.cream` (#FFF8F0): **3.27:1** — passes AA only for large text (≥ 3:1). **Do not use primary as a text color on cream for normal-weight body text.** Use `coal` for button labels on primary backgrounds (coal-on-primary = 5.74:1 ✓). Coal on cream: 18:1 ✓. All combinations are asserted in `apps/mobile/theme/__tests__/contrast.test.ts`.
 - Dynamic Type support on iOS; `allowFontScaling` honored on Android.
 - All tappable targets ≥44×44 pt.
 - Color is never the only signal — pair with icons or text (e.g., the lock icon + "Locked" label).

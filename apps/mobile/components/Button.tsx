@@ -8,11 +8,16 @@ interface ButtonProps extends Omit<PressableProps, 'style'> {
   variant?: Variant;
 }
 
+// Text color chosen to meet WCAG AA 4.5:1 on each background:
+//   primary  (#FF3B6B) → coal  5.74:1 ✓   (cream would only be 3.27:1 — fails)
+//   secondary (#7B2CBF) → cream 7.06:1 ✓
+//   danger   (#E53935) → coal  4.68:1 ✓   (cream would only be 4.01:1 — fails)
+//   ghost    (transparent/cream) → coal 18:1 ✓  border is primary for brand signal
 const variantStyles: Record<Variant, { bg: string; fg: string; border?: string }> = {
-  primary: { bg: colors.primary, fg: colors.cream },
+  primary: { bg: colors.primary, fg: colors.coal },
   secondary: { bg: colors.violet, fg: colors.cream },
-  danger: { bg: colors.danger, fg: colors.cream },
-  ghost: { bg: 'transparent', fg: colors.primary, border: colors.primary },
+  danger: { bg: colors.danger, fg: colors.coal },
+  ghost: { bg: 'transparent', fg: colors.coal, border: colors.primary },
 };
 
 export function Button({ label, variant = 'primary', disabled, ...rest }: ButtonProps) {
