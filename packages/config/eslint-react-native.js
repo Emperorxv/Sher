@@ -10,8 +10,16 @@ const noGradientRule = {
           context.report({ node, message: 'Gradients are banned (§7.5). Use solid colors only.' });
         }
       },
+      // Catch bare `LinearGradient` references outside of import specifiers
+      // (e.g. `const G = require('expo-linear-gradient').LinearGradient`).
+      // ImportDeclaration already covers import-specifier cases above.
       Identifier(node) {
-        if (node.name === 'LinearGradient') {
+        if (
+          node.name === 'LinearGradient' &&
+          node.parent.type !== 'ImportSpecifier' &&
+          node.parent.type !== 'ImportDefaultSpecifier' &&
+          node.parent.type !== 'ImportNamespaceSpecifier'
+        ) {
           context.report({ node, message: 'Gradients are banned (§7.5). Use solid colors only.' });
         }
       },
@@ -35,4 +43,4 @@ const reactNativeConfig = [
   },
 ];
 
-module.exports = { reactNativeConfig };
+module.exports = { reactNativeConfig, noGradientRule };
