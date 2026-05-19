@@ -11,6 +11,10 @@ import {
 } from '@expo-google-fonts/roboto';
 import { queryClient } from '../lib/query-client';
 import { useAuthStore } from '../stores/auth';
+import { initSentry } from '../lib/sentry';
+
+// Initialise Sentry before any renders (no-op if EXPO_PUBLIC_SENTRY_DSN is unset).
+initSentry();
 
 // Keep the splash screen visible while we load fonts.
 SplashScreen.preventAutoHideAsync();

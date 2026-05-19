@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@expo-google-fonts/roboto": "^0.4.3",
+    "@sentry/react-native": "^8.11.1",
     "@sher/api-client": "workspace:*",
     "@sher/shared-types": "workspace:*",
     "@sher/ui": "workspace:*",
