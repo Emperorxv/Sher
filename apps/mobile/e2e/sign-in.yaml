@@ -1,0 +1,38 @@
+# Maestro E2E — Phase 3 happy-path: open app → sign in → see My Rooms empty state.
+#
+# Prerequisites:
+#   - API running at $EXPO_PUBLIC_API_URL (default: http://localhost:3000)
+#   - Termii OTP delivery enabled for +2340000000001 (test number)
+#   - Test phone number seeded in the database (apps/api/prisma/seed.ts)
+#
+# Run: maestro test apps/mobile/e2e/sign-in.yaml
+#
+# Note: OTP code is hard-coded to "000000" in dev/test mode
+# (API returns a fixed code when NODE_ENV=test).
+
+appId: com.sher.mobile
+
+---
+- launchApp:
+    clearState: true
+
+# Welcome screen
+- assertVisible: "Let's go →"
+- tapOn: "Let's go →"
+
+# Phone screen
+- assertVisible: "What's your number?"
+- tapOn:
+    id: 'Phone number'
+- inputText: '+2340000000001'
+- tapOn: 'Send code'
+
+# Verify screen
+- assertVisible: 'Check your texts'
+- tapOn:
+    id: 'One-time code'
+- inputText: '000000'
+
+# My Rooms empty state
+- assertVisible: 'No rooms yet.'
+- assertVisible: 'Create one or scan a code to join an event.'
