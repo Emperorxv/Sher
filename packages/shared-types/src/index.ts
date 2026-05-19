@@ -1,2 +1,1 @@
-// Populated in Phase 3 (Room + Membership domain types).
-export {};
+export type { OtpRequestDto, OtpVerifyDto, AuthTokensDto, RefreshTokenDto, UserDto } from './auth';

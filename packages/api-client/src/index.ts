@@ -1,2 +1,2 @@
-// Populated in Phase 3 (typed fetch client for the mobile app).
-export {};
+export { createApiClient, ApiError } from './client';
+export type { ApiClientOptions } from './client';

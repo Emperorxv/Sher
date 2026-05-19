@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "@sher/config/tsconfig/base.json",
+  "extends": "@sher/config/tsconfig/node.json",
+  "compilerOptions": {
+    "lib": ["ES2020", "DOM"]
+  },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
