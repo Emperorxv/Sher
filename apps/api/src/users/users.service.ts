@@ -13,6 +13,7 @@ export type PublicUser = Pick<
   | 'marketingConsent'
   | 'displayName'
   | 'avatarUrl'
+  | 'preferredCurrency'
   | 'createdAt'
 >;
 
@@ -41,6 +42,7 @@ export class UsersService {
         ...(dto.displayName !== undefined && { displayName: dto.displayName }),
         ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
         ...(dto.marketingConsent !== undefined && { marketingConsent: dto.marketingConsent }),
+        ...(dto.preferredCurrency !== undefined && { preferredCurrency: dto.preferredCurrency }),
         ...(emailChanged && { email: dto.email, emailVerified: false }),
       },
     });
@@ -62,6 +64,7 @@ export class UsersService {
       marketingConsent: user.marketingConsent,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      preferredCurrency: user.preferredCurrency,
       createdAt: user.createdAt,
     };
   }

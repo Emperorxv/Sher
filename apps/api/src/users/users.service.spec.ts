@@ -9,6 +9,7 @@ const MOCK_USER = {
   marketingConsent: false,
   displayName: 'Alice',
   avatarUrl: null,
+  preferredCurrency: null,
   status: 'ACTIVE' as const,
   createdAt: new Date('2024-01-01'),
   updatedAt: new Date('2024-01-01'),
@@ -84,6 +85,14 @@ describe('UsersService', () => {
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { marketingConsent: true } }),
       );
+    });
+
+    it('updates preferredCurrency and includes it in the returned public user', async () => {
+      const result = await service.patchMe('user-id', { preferredCurrency: 'GBP' });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { preferredCurrency: 'GBP' } }),
+      );
+      expect(result.preferredCurrency).toBe('GBP');
     });
 
     it('throws NotFoundException for soft-deleted user', async () => {

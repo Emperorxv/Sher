@@ -70,9 +70,10 @@ model User {
   email            String     @unique // Required; collected at first OTP verify, verified async
   emailVerified    Boolean    @default(false)
   marketingConsent Boolean    @default(false)
-  displayName      String?
-  avatarUrl        String?
-  status           UserStatus @default(ACTIVE)
+  displayName        String?
+  avatarUrl          String?
+  preferredCurrency  String? // ISO 4217; must be in SUPPORTED_CURRENCIES; null = auto-resolve at Room creation
+  status             UserStatus @default(ACTIVE)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   deletedAt        DateTime?

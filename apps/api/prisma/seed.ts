@@ -11,6 +11,7 @@ async function main(): Promise<void> {
       email: 'devhost@sher.dev',
       emailVerified: true,
       displayName: 'Dev Host',
+      preferredCurrency: 'NGN',
       status: UserStatus.ACTIVE,
     },
   });

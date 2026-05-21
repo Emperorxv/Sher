@@ -43,5 +43,6 @@ export interface UserDto {
   email: string | null;
   emailVerified: boolean;
   marketingConsent: boolean;
+  preferredCurrency: string | null; // ISO 4217; null = auto-resolve at Room creation
   createdAt: string; // ISO-8601 UTC
 }
