@@ -22,6 +22,7 @@ export const apiClient = createApiClient({
   baseUrl: BASE_URL,
 
   getAccessToken: () => tokenStore.getAccess(),
+  getRefreshToken: () => tokenStore.getRefresh(),
 
   onTokensRefreshed: async (tokens: AuthTokensDto) => {
     await tokenStore.setAccess(tokens.accessToken);

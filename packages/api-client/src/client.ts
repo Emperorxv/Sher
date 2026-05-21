@@ -1,15 +1,19 @@
 import type {
   AuthTokensDto,
   OtpRequestDto,
+  OtpRequestResponseDto,
   OtpVerifyDto,
   RefreshTokenDto,
   UserDto,
+  VerifyOtpResponseDto,
 } from '@sher/shared-types';
 
 export interface ApiClientOptions {
   baseUrl: string;
   /** Returns the current access token, or null if not signed in. */
   getAccessToken: () => Promise<string | null>;
+  /** Returns the current refresh token, or null if not signed in. */
+  getRefreshToken: () => Promise<string | null>;
   /** Called when a token refresh succeeds; persist the new tokens. */
   onTokensRefreshed: (tokens: AuthTokensDto) => Promise<void>;
   /** Called when refresh fails; clear session and redirect to sign-in. */
@@ -72,19 +76,21 @@ export function createApiClient(opts: ApiClientOptions) {
       );
     }
 
+    // 204 No Content — nothing to parse.
+    if (res.status === 204) return undefined as T;
+
     const json = (await res.json()) as ApiResponse<T>;
     return json.data;
   }
 
   async function doRefresh(): Promise<AuthTokensDto | null> {
     try {
-      const current = await opts.getAccessToken();
-      if (!current) return null;
+      const refreshToken = await opts.getRefreshToken();
+      if (!refreshToken) return null;
 
       const result = await rawFetch<AuthTokensDto>('/v1/auth/refresh', {
         method: 'POST',
-        // Refresh token is sent from the secure store by the onTokensRefreshed flow.
-        // The mobile lib/api.ts layer wires this up using tokenStore.getRefresh().
+        body: { refreshToken },
         skipAuth: true,
       });
       await opts.onTokensRefreshed(result);
@@ -99,15 +105,26 @@ export function createApiClient(opts: ApiClientOptions) {
 
   const auth = {
     requestOtp: (dto: OtpRequestDto) =>
-      rawFetch<void>('/v1/auth/otp/request', { method: 'POST', body: dto, skipAuth: true }),
+      rawFetch<OtpRequestResponseDto>('/v1/auth/otp/request', {
+        method: 'POST',
+        body: dto,
+        skipAuth: true,
+      }),
 
     verifyOtp: (dto: OtpVerifyDto) =>
-      rawFetch<AuthTokensDto>('/v1/auth/otp/verify', { method: 'POST', body: dto, skipAuth: true }),
+      rawFetch<VerifyOtpResponseDto>('/v1/auth/otp/verify', {
+        method: 'POST',
+        body: dto,
+        skipAuth: true,
+      }),
 
     refresh: (dto: RefreshTokenDto) =>
       rawFetch<AuthTokensDto>('/v1/auth/refresh', { method: 'POST', body: dto, skipAuth: true }),
 
-    logout: () => rawFetch<void>('/v1/auth/logout', { method: 'POST' }),
+    logout: async () => {
+      const refreshToken = await opts.getRefreshToken();
+      return rawFetch<void>('/v1/auth/logout', { method: 'POST', body: { refreshToken } });
+    },
 
     me: () => rawFetch<UserDto>('/v1/auth/me'),
   };

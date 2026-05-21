@@ -17,11 +17,17 @@ const CODE_LENGTH = 6;
 
 export default function VerifyScreen() {
   const router = useRouter();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { phone, challengeId: initialChallengeId } = useLocalSearchParams<{
+    phone: string;
+    challengeId: string;
+  }>();
   const verifyOtp = useAuthStore((s) => s.verifyOtp);
   const requestOtp = useAuthStore((s) => s.requestOtp);
 
+  // challengeId can change if the user resends the OTP.
+  const [challengeId, setChallengeId] = useState(initialChallengeId ?? '');
   const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
@@ -36,7 +42,7 @@ export default function VerifyScreen() {
     setError(null);
     setLoading(true);
     try {
-      await verifyOtp(phone ?? '', value);
+      await verifyOtp(challengeId, value, email.trim() || undefined);
       // On success the auth store sets tokens; navigate to main app.
       router.replace('/(app)/rooms');
     } catch {
@@ -49,7 +55,8 @@ export default function VerifyScreen() {
     if (!phone) return;
     setError(null);
     try {
-      await requestOtp(phone);
+      const result = await requestOtp(phone);
+      setChallengeId(result.challengeId);
       setCode('');
       setResent(true);
       setTimeout(() => setResent(false), 4000);
@@ -86,6 +93,20 @@ export default function VerifyScreen() {
             autoComplete="one-time-code"
             maxLength={CODE_LENGTH}
             accessibilityLabel="One-time code"
+          />
+
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email (optional)"
+            placeholderTextColor={colors.fog}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            autoComplete="email"
+            autoCapitalize="none"
+            returnKeyType="done"
+            accessibilityLabel="Email address"
           />
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -143,6 +164,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 12,
     marginVertical: spacing.sm,
+  },
+  input: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.body1,
+    color: colors.coal,
+    backgroundColor: colors.cream,
+    borderWidth: 2,
+    borderColor: colors.fog,
+    borderRadius: radii.button,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
   },
   inputError: {
     borderColor: colors.danger,

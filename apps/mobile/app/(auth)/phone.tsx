@@ -29,8 +29,8 @@ export default function PhoneScreen() {
     setError(null);
     setLoading(true);
     try {
-      await requestOtp(trimmed);
-      router.push({ pathname: '/(auth)/verify', params: { phone: trimmed } });
+      const { challengeId } = await requestOtp(trimmed);
+      router.push({ pathname: '/(auth)/verify', params: { phone: trimmed, challengeId } });
     } catch {
       setError("Couldn't send the code. Check your number and try again.");
     } finally {

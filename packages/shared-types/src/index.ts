@@ -1,1 +1,9 @@
-export type { OtpRequestDto, OtpVerifyDto, AuthTokensDto, RefreshTokenDto, UserDto } from './auth';
+export type {
+  OtpRequestDto,
+  OtpRequestResponseDto,
+  OtpVerifyDto,
+  AuthTokensDto,
+  VerifyOtpResponseDto,
+  RefreshTokenDto,
+  UserDto,
+} from './auth';

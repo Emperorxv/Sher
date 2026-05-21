@@ -7,11 +7,11 @@ interface AuthState {
   user: UserDto | null;
   isSignedIn: boolean;
 
-  /** Send OTP to a phone number (E.164 format). */
-  requestOtp: (phone: string) => Promise<void>;
+  /** Send OTP to a phone number (E.164 format). Returns the challengeId for the verify step. */
+  requestOtp: (phone: string) => Promise<{ challengeId: string }>;
 
-  /** Verify OTP code; persists tokens and fetches the current user. */
-  verifyOtp: (phone: string, code: string) => Promise<void>;
+  /** Verify OTP code; persists tokens and updates user state. */
+  verifyOtp: (challengeId: string, code: string, email?: string) => Promise<void>;
 
   /** Sign out: clear tokens and reset state. */
   signOut: () => Promise<void>;
@@ -35,15 +35,14 @@ export const useAuthStore = create<AuthState>((set) => {
     isSignedIn: false,
 
     requestOtp: async (phone) => {
-      await apiClient.auth.requestOtp({ phone });
+      return apiClient.auth.requestOtp({ phone });
     },
 
-    verifyOtp: async (phone, code) => {
-      const tokens = await apiClient.auth.verifyOtp({ phone, code });
-      await tokenStore.setAccess(tokens.accessToken);
-      await tokenStore.setRefresh(tokens.refreshToken);
-      const user = await apiClient.auth.me();
-      set({ user, isSignedIn: true });
+    verifyOtp: async (challengeId, code, email) => {
+      const result = await apiClient.auth.verifyOtp({ challengeId, code, email });
+      await tokenStore.setAccess(result.tokens.accessToken);
+      await tokenStore.setRefresh(result.tokens.refreshToken);
+      set({ user: result.user, isSignedIn: true });
     },
 
     signOut: async () => {
