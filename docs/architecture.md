@@ -40,30 +40,31 @@ Because some members pay (base 3) via the host and other members (extras) pay th
 
 ## 2. Tech Stack — Final Decisions
 
-| Layer                     | Choice                                                                   | Why                                                                            |
-| ------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Mobile                    | **React Native 0.83 (Expo SDK 55)** with TypeScript                      | One codebase for iOS/Android, mature camera + filter stack, EAS for builds/OTA |
-| Camera                    | **react-native-vision-camera v4** + **react-native-skia** for filters    | GPU-accelerated, far superior to expo-camera for this use case                 |
-| Mobile state              | **Zustand** (client state) + **TanStack Query** (server state)           | Lightweight, predictable, ideal for offline-first                              |
-| Local storage             | **MMKV** (preferences) + **expo-sqlite** (photo queue)                   | MMKV is 30x faster than AsyncStorage                                           |
-| Backend framework         | **NestJS** (Node.js 20+, TypeScript)                                     | Opinionated structure, DI, decorators, scales from MVP to enterprise           |
-| Database                  | **PostgreSQL 16**                                                        | Relational integrity for memberships, payments, retention                      |
-| ORM                       | **Prisma**                                                               | Type-safe queries, migrations, great DX                                        |
-| Cache / queue / pubsub    | **Redis 7**                                                              | Sessions, rate limits, BullMQ jobs, pub/sub for real-time                      |
-| Object storage            | **Cloudflare R2** (S3-compatible)                                        | **Zero egress fees** — crucial for a download-heavy app                        |
-| CDN                       | **Cloudflare**                                                           | Image resizing via Cloudflare Images Transform, global edge                    |
-| Image processing (server) | **sharp** (libvips)                                                      | Thumbnail/medium variants on upload                                            |
-| Real-time                 | **Socket.IO** (Redis adapter)                                            | Reliable, handles reconnect, fallbacks                                         |
-| Push notifications        | **Expo Push Service** → APNS + FCM                                       | Single API, free, abstracts platform differences                               |
-| Background jobs           | **BullMQ** (Redis-backed)                                                | Scheduled deletion, payment reconciliation, notifications                      |
-| Auth                      | Phone + OTP (Termii/Africa's Talking), JWT (access + refresh)            | Phone-first identity is dominant in NG                                         |
-| Payments                  | **Paystack** (primary) + **Flutterwave** (fallback)                      | Cards, USSD, bank transfer, mobile money                                       |
-| Email (receipts)          | **Resend** or **AWS SES**                                                | Transactional only                                                             |
-| Observability             | **Sentry** (errors), **BetterStack** (logs), **Grafana Cloud** (metrics) | Free tiers cover MVP, scale up later                                           |
-| Hosting (compute)         | **AWS ECS Fargate** _or_ **DigitalOcean App Platform**                   | Both fine; DO is cheaper for early stage                                       |
-| IaC                       | **Terraform**                                                            | Reproducible infra, multi-environment                                          |
-| CI/CD                     | **GitHub Actions** + **EAS Build/Submit**                                | Standard, free for private repos under limits                                  |
-| Secrets                   | **AWS Secrets Manager** _or_ **Doppler**                                 | Never `.env` in repo                                                           |
+| Layer                     | Choice                                                                   | Why                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Mobile                    | **React Native 0.83 (Expo SDK 55)** with TypeScript                      | One codebase for iOS/Android, mature camera + filter stack, EAS for builds/OTA                                              |
+| Camera (QR scanning)      | **expo-camera** (Phase 4 – managed workflow, Expo Go compatible)         | Sufficient for barcode/QR; no native config; keeps dev loop simple before dev-build transition                              |
+| Camera (photo capture)    | **react-native-vision-camera v4** + **react-native-skia** for filters    | GPU-accelerated real-time filter pipeline; introduced in Phase 6, which is the natural transition point to a full dev build |
+| Mobile state              | **Zustand** (client state) + **TanStack Query** (server state)           | Lightweight, predictable, ideal for offline-first                                                                           |
+| Local storage             | **MMKV** (preferences) + **expo-sqlite** (photo queue)                   | MMKV is 30x faster than AsyncStorage                                                                                        |
+| Backend framework         | **NestJS** (Node.js 20+, TypeScript)                                     | Opinionated structure, DI, decorators, scales from MVP to enterprise                                                        |
+| Database                  | **PostgreSQL 16**                                                        | Relational integrity for memberships, payments, retention                                                                   |
+| ORM                       | **Prisma**                                                               | Type-safe queries, migrations, great DX                                                                                     |
+| Cache / queue / pubsub    | **Redis 7**                                                              | Sessions, rate limits, BullMQ jobs, pub/sub for real-time                                                                   |
+| Object storage            | **Cloudflare R2** (S3-compatible)                                        | **Zero egress fees** — crucial for a download-heavy app                                                                     |
+| CDN                       | **Cloudflare**                                                           | Image resizing via Cloudflare Images Transform, global edge                                                                 |
+| Image processing (server) | **sharp** (libvips)                                                      | Thumbnail/medium variants on upload                                                                                         |
+| Real-time                 | **Socket.IO** (Redis adapter)                                            | Reliable, handles reconnect, fallbacks                                                                                      |
+| Push notifications        | **Expo Push Service** → APNS + FCM                                       | Single API, free, abstracts platform differences                                                                            |
+| Background jobs           | **BullMQ** (Redis-backed)                                                | Scheduled deletion, payment reconciliation, notifications                                                                   |
+| Auth                      | Phone + OTP (Termii/Africa's Talking), JWT (access + refresh)            | Phone-first identity is dominant in NG                                                                                      |
+| Payments                  | **Paystack** (primary) + **Flutterwave** (fallback)                      | Cards, USSD, bank transfer, mobile money                                                                                    |
+| Email (receipts)          | **Resend** or **AWS SES**                                                | Transactional only                                                                                                          |
+| Observability             | **Sentry** (errors), **BetterStack** (logs), **Grafana Cloud** (metrics) | Free tiers cover MVP, scale up later                                                                                        |
+| Hosting (compute)         | **AWS ECS Fargate** _or_ **DigitalOcean App Platform**                   | Both fine; DO is cheaper for early stage                                                                                    |
+| IaC                       | **Terraform**                                                            | Reproducible infra, multi-environment                                                                                       |
+| CI/CD                     | **GitHub Actions** + **EAS Build/Submit**                                | Standard, free for private repos under limits                                                                               |
+| Secrets                   | **AWS Secrets Manager** _or_ **Doppler**                                 | Never `.env` in repo                                                                                                        |
 
 ### Why not Flutter / native?
 
@@ -1348,7 +1349,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Currency resolution at Room creation (`resolveCurrency`).
 - Pricing service (`PRICE_BOOK`, `quote`, `formatDisplay`) with unit tests for every supported currency.
 - Socket.IO gateway with `/rooms` namespace, member join/leave events.
-- Mobile: Create flow (free, instant), Join flow (manual code + QR scan via Vision Camera), Room dashboard screen, "extra member" warning sheet when host invites a 4th+.
+- Mobile: Create flow (free, instant), Join flow (manual code + QR scan via **expo-camera** — managed workflow, no dev build required), Room dashboard screen, "extra member" warning sheet when host invites a 4th+.
 - E2E: host creates room (free), guest joins via QR, host invites a 4th member and sees the per-extra-member fee warning in their local currency.
   **Done when:** Two simulators join the same room, see each other in members list, and the host sees a correctly-priced per-extra warning when adding the 4th member.
 
@@ -1386,7 +1387,9 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 
 **Goal:** Members can capture, queue, and upload photos. Gallery updates live.
 
-- Mobile: Camera screen with Vision Camera, capture writes to FileSystem queue, SQLite-backed upload queue with retry/backoff, progress UI.
+> **Dev-build transition point.** Phase 6 is the first phase that requires a full Expo dev build (not Expo Go). This is because `react-native-vision-camera` v4 and `react-native-skia` require native module compilation. Phases 1–5 all run on Expo Go / managed workflow. From Phase 6 onward, use `expo run:ios` / `expo run:android` or an EAS development build. The switch from `expo-camera` (QR scanning, Phase 4) to Vision Camera (photo capture, Phase 6) happens here; `expo-camera` can be removed once the dev build is confirmed working.
+
+- Mobile: Camera screen with Vision Camera (v4), capture writes to FileSystem queue, SQLite-backed upload queue with retry/backoff, progress UI.
 - Filters (initial 8) via Skia.
 - EXIF read for `takenAt`.
 - Backend: presigned PUT issuance, commit endpoint, BullMQ `process-photo` worker (thumb + medium variants with sharp, EXIF strip).
