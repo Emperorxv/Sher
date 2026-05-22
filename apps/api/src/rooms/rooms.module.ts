@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MembershipService } from './membership.service';
@@ -11,9 +11,7 @@ import { RoomsService } from './rooms.service';
   imports: [
     PrismaModule,
     PricingModule,
-    // JwtModule without options — reads privateKey/publicKey from env at runtime.
-    // The gateway only needs to verify (publicKey), not sign.
-    JwtModule.register({}),
+    AuthModule, // provides JwtAuthGuard, TokenService, JwtService with env keys
   ],
   controllers: [RoomsController],
   providers: [RoomsService, MembershipService, RoomsGateway],

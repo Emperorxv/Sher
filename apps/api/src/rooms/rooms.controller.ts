@@ -10,16 +10,19 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User } from '@prisma/client';
+import { AuthenticatedUser } from '../auth/auth.types';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createZodPipe } from '../common/pipes/zod-validation.pipe';
 import { CreateRoomSchema, CreateRoomInput } from './schemas/create-room.schema';
 import { JoinRoomSchema, JoinRoomInput } from './schemas/join-room.schema';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
+@UseGuards(JwtAuthGuard)
 export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
@@ -27,7 +30,7 @@ export class RoomsController {
 
   @Post()
   async create(
-    @CurrentUser() user: User,
+    @CurrentUser() user: AuthenticatedUser,
     @Body(createZodPipe(CreateRoomSchema)) dto: CreateRoomInput,
     @Req() req: Request,
   ) {
@@ -39,14 +42,14 @@ export class RoomsController {
   // ── GET /v1/rooms ──────────────────────────────────────────────────────────
 
   @Get()
-  list(@CurrentUser() user: User) {
+  list(@CurrentUser() user: AuthenticatedUser) {
     return this.rooms.listRooms(user.id);
   }
 
   // ── GET /v1/rooms/:id ──────────────────────────────────────────────────────
 
   @Get(':id')
-  getOne(@CurrentUser() user: User, @Param('id') id: string) {
+  getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.rooms.getRoom(id, user.id);
   }
 
@@ -54,7 +57,7 @@ export class RoomsController {
 
   @Patch(':id')
   patch(
-    @CurrentUser() user: User,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() body: { name?: string; endsAt?: string },
   ) {
@@ -68,7 +71,7 @@ export class RoomsController {
 
   @Get(':id/members')
   getMembers(
-    @CurrentUser() user: User,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
@@ -81,7 +84,7 @@ export class RoomsController {
   @Delete(':id/members/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeMember(
-    @CurrentUser() user: User,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Param('userId') targetUserId: string,
   ) {
@@ -91,21 +94,24 @@ export class RoomsController {
   // ── POST /v1/rooms/join ────────────────────────────────────────────────────
 
   @Post('join')
-  join(@CurrentUser() user: User, @Body(createZodPipe(JoinRoomSchema)) dto: JoinRoomInput) {
+  join(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(createZodPipe(JoinRoomSchema)) dto: JoinRoomInput,
+  ) {
     return this.rooms.joinRoom(user, dto);
   }
 
   // ── POST /v1/rooms/:id/end ─────────────────────────────────────────────────
 
   @Post(':id/end')
-  endRoom(@CurrentUser() user: User, @Param('id') id: string) {
+  endRoom(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.rooms.endRoom(id, user.id);
   }
 
   // ── GET /v1/rooms/:id/pricing ──────────────────────────────────────────────
 
   @Get(':id/pricing')
-  pricing(@CurrentUser() user: User, @Param('id') id: string) {
+  pricing(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.rooms.getRoomPricing(id, user.id);
   }
 }

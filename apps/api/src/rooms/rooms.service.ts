@@ -5,7 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Membership, Room, RoomStatus, User } from '@prisma/client';
+import { Membership, Room, RoomStatus } from '@prisma/client';
+import { AuthenticatedUser } from '../auth/auth.types';
 import { randomBytes } from 'crypto';
 import {
   CreateRoomResponseDto,
@@ -35,7 +36,7 @@ export class RoomsService {
   // ── Create ──────────────────────────────────────────────────────────────────
 
   async createRoom(
-    host: User,
+    host: AuthenticatedUser & { preferredCurrency?: string | null },
     input: CreateRoomInput,
     deviceCountry: string | null,
     ip: string | null,
@@ -94,7 +95,7 @@ export class RoomsService {
 
   // ── Join ────────────────────────────────────────────────────────────────────
 
-  async joinRoom(user: User, input: JoinRoomInput): Promise<JoinRoomResponseDto> {
+  async joinRoom(user: AuthenticatedUser, input: JoinRoomInput): Promise<JoinRoomResponseDto> {
     let room: Room;
 
     if (input.qrToken) {
@@ -136,7 +137,11 @@ export class RoomsService {
 
     // Step 2: full verification against the room's stored qrSecret.
     const result = verifyQrToken(token, room.qrSecret);
-    if (!result.ok) throw new BadRequestException(`QR_TOKEN_${result.reason}`);
+    if (!result.ok)
+      throw new BadRequestException({
+        code: `QR_TOKEN_${result.reason}`,
+        message: `QR token ${result.reason.toLowerCase().replace('_', ' ')}`,
+      });
 
     return room;
   }
