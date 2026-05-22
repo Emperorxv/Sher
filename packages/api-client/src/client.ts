@@ -1,9 +1,18 @@
 import type {
   AuthTokensDto,
+  CreateRoomDto,
+  CreateRoomResponseDto,
+  JoinRoomDto,
+  JoinRoomResponseDto,
+  MemberDto,
   OtpRequestDto,
   OtpRequestResponseDto,
   OtpVerifyDto,
+  PaginatedDto,
+  PricingQuoteDto,
   RefreshTokenDto,
+  RoomDto,
+  RoomSummaryDto,
   UserDto,
   VerifyOtpResponseDto,
 } from '@sher/shared-types';
@@ -129,7 +138,30 @@ export function createApiClient(opts: ApiClientOptions) {
     me: () => rawFetch<UserDto>('/v1/auth/me'),
   };
 
-  return { auth };
+  // ─── Rooms endpoints ────────────────────────────────────────────────────────
+
+  const rooms = {
+    create: (dto: CreateRoomDto) =>
+      rawFetch<CreateRoomResponseDto>('/v1/rooms', { method: 'POST', body: dto }),
+
+    list: () => rawFetch<RoomSummaryDto[]>('/v1/rooms'),
+
+    get: (roomId: string) => rawFetch<RoomDto>(`/v1/rooms/${roomId}`),
+
+    join: (dto: JoinRoomDto) =>
+      rawFetch<JoinRoomResponseDto>('/v1/rooms/join', { method: 'POST', body: dto }),
+
+    end: (roomId: string) => rawFetch<RoomDto>(`/v1/rooms/${roomId}/end`, { method: 'POST' }),
+
+    pricing: (roomId: string) => rawFetch<PricingQuoteDto>(`/v1/rooms/${roomId}/pricing`),
+
+    members: (roomId: string, page = 1, pageSize = 20) =>
+      rawFetch<PaginatedDto<MemberDto>>(
+        `/v1/rooms/${roomId}/members?page=${page}&pageSize=${pageSize}`,
+      ),
+  };
+
+  return { auth, rooms };
 }
 
 export class ApiError extends Error {
