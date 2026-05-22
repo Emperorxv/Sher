@@ -4,8 +4,10 @@ import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { DevOtpModule } from './dev/dev-otp.module';
 import { HealthModule } from './health/health.module';
+import { PricingModule } from './pricing/pricing.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { RoomsModule } from './rooms/rooms.module';
 import { UsersModule } from './users/users.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
@@ -29,13 +31,15 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     }),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 120 }],
-      // TODO Phase 4: swap to Redis storage via ThrottlerStorageRedisService
+      // TODO Phase 5: swap to Redis storage via ThrottlerStorageRedisService
     }),
     PrismaModule,
     RedisModule,
     HealthModule,
     AuthModule,
     UsersModule,
+    PricingModule,
+    RoomsModule,
   ],
 })
 export class AppModule implements NestModule {
