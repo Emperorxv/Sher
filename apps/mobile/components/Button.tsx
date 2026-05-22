@@ -1,4 +1,11 @@
-import { Pressable, StyleSheet, Text, type PressableProps } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { colors, fonts, fontSizes, radii, minTapTarget } from '../theme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -6,6 +13,7 @@ type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 interface ButtonProps extends Omit<PressableProps, 'style'> {
   label: string;
   variant?: Variant;
+  style?: StyleProp<ViewStyle>;
 }
 
 // Text color chosen to meet WCAG AA 4.5:1 on each background:
@@ -20,7 +28,7 @@ const variantStyles: Record<Variant, { bg: string; fg: string; border?: string }
   ghost: { bg: 'transparent', fg: colors.coal, border: colors.primary },
 };
 
-export function Button({ label, variant = 'primary', disabled, ...rest }: ButtonProps) {
+export function Button({ label, variant = 'primary', disabled, style, ...rest }: ButtonProps) {
   const vs = variantStyles[variant];
   return (
     <Pressable
@@ -32,6 +40,7 @@ export function Button({ label, variant = 'primary', disabled, ...rest }: Button
         vs.border && styles.bordered,
         pressed && styles.pressed,
         disabled && styles.disabled,
+        style,
       ]}
       accessibilityRole="button"
     >
