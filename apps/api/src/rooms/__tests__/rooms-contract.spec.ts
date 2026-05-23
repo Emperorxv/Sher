@@ -81,16 +81,17 @@ const TEST_ROOM = {
   qrSecret: 'test-qr-secret',
   baseCapacity: 3,
   status: 'ACTIVE' as const,
-  startsAt: new Date('2026-05-22T10:00:00Z'),
-  endsAt: new Date('2026-05-22T22:00:00Z'),
+  // Use dates far in the future so QR tokens never expire in CI
+  startsAt: new Date('2030-12-31T10:00:00Z'),
+  endsAt: new Date('2030-12-31T22:00:00Z'),
   endedAt: null,
   baseUnlockedAt: null,
   baseUnlockPaymentId: null,
-  retentionUntil: new Date('2026-06-21T22:00:00Z'),
+  retentionUntil: new Date('2031-01-30T22:00:00Z'),
   coverPhotoId: null,
   pricingCurrency: 'NGN',
-  createdAt: new Date('2026-05-22T08:00:00Z'),
-  updatedAt: new Date('2026-05-22T08:00:00Z'),
+  createdAt: new Date('2030-12-31T08:00:00Z'),
+  updatedAt: new Date('2030-12-31T08:00:00Z'),
 };
 
 const HOST_MEMBERSHIP = {

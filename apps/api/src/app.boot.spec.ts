@@ -15,6 +15,18 @@
  * Neither approach catches a broken @Module() wiring or a missing provider
  * export.  This test does.
  *
+ * KNOWN LIMITATION — WebSocket gateway afterInit hooks
+ * -----------------------------------------------------
+ * RoomsGateway (and any future gateway) guards its afterInit() with
+ *   if (process.env['NODE_ENV'] === 'test') return;
+ * to prevent open Redis handles in Jest workers.  Because this test runs
+ * with NODE_ENV=test, the gateway's real init path is never exercised here —
+ * a crash in that path (e.g. calling a missing method on a Namespace) would
+ * NOT be caught by this spec.
+ *
+ * Dedicated gateway specs (rooms/__tests__/rooms.gateway.spec.ts) cover the
+ * production init path by temporarily clearing NODE_ENV for the relevant tests.
+ *
  * WHY THOSE TESTS PASSED ANYWAY
  * ------------------------------
  * ts-jest (non-isolated mode) compiles TypeScript with the full language

@@ -6,7 +6,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server, Socket, Namespace } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { JwtService } from '@nestjs/jwt';
@@ -34,7 +34,7 @@ export interface MemberLeftPayload {
  */
 @WebSocketGateway({ namespace: '/rooms', cors: { origin: '*' } })
 export class RoomsGateway
-  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, OnModuleDestroy
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit<Namespace>, OnModuleDestroy
 {
   @WebSocketServer()
   server!: Server;
@@ -49,8 +49,12 @@ export class RoomsGateway
    * Called by NestJS after the Socket.IO server is created and ready.
    * Wire up the Redis pub/sub adapter here so multiple API pods can broadcast.
    * Skipped in test environment to avoid open handles in Jest workers.
+   *
+   * IMPORTANT: when @WebSocketGateway is configured with a namespace, NestJS
+   * passes the Namespace object here — NOT the root Server.  Namespace has no
+   * adapter() method; we must reach the root Server via `nsp.server`.
    */
-  async afterInit(server: Server) {
+  async afterInit(nsp: Namespace) {
     if (process.env['NODE_ENV'] === 'test') return;
 
     const redisUrl = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
@@ -58,7 +62,7 @@ export class RoomsGateway
     this.subClient = this.pubClient.duplicate();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ioredis satisfies the redis adapter interface at runtime
-    server.adapter(createAdapter(this.pubClient as any, this.subClient as any));
+    nsp.server.adapter(createAdapter(this.pubClient as any, this.subClient as any));
     this.logger.log('Socket.IO Redis adapter attached');
   }
 
