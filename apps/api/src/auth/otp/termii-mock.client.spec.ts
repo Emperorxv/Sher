@@ -8,11 +8,20 @@ describe('TermiiMockClient', () => {
     expect(result).toEqual({ success: true, messageId: 'mock-msg-id' });
   });
 
-  it('stores the OTP code in DevOtpStore when one is provided', async () => {
+  it('stores the OTP code in DevOtpStore keyed by phone when one is provided', async () => {
     const store = new DevOtpStore();
     const client = new TermiiMockClient(store);
     await client.sendOtp('+2348012345678', '654321');
-    expect(store.get()).toBe('654321');
+    expect(store.get('+2348012345678')).toBe('654321');
+  });
+
+  it('stores codes independently per phone — second phone does not overwrite first', async () => {
+    const store = new DevOtpStore();
+    const client = new TermiiMockClient(store);
+    await client.sendOtp('+2348012345678', 'code-a');
+    await client.sendOtp('+2348099999999', 'code-b');
+    expect(store.get('+2348012345678')).toBe('code-a');
+    expect(store.get('+2348099999999')).toBe('code-b');
   });
 
   it('does not throw when DevOtpStore is absent (non-dev env)', async () => {

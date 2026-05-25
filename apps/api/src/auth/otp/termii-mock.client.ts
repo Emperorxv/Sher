@@ -20,7 +20,7 @@ export class TermiiMockClient {
   async sendOtp(phone: string, code: string): Promise<SmsResult> {
     // OTP codes must never be logged — not even in mock mode
     this.logger.log({ phone: phone.slice(0, -4) + '****' }, '[MOCK] OTP dispatched');
-    this.devStore?.set(code);
+    this.devStore?.set(phone, code);
     return { success: true, messageId: 'mock-msg-id' };
   }
 }
