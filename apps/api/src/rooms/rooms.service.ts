@@ -22,6 +22,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { generateJoinCode, normaliseJoinCode } from './utils/join-code.util';
 import { extractRoomIdUnsafe, signQrToken, verifyQrToken } from './utils/qr-token.util';
 import { MembershipService } from './membership.service';
+import { RoomsGateway } from './rooms.gateway';
 import { CreateRoomInput } from './schemas/create-room.schema';
 import { JoinRoomInput } from './schemas/join-room.schema';
 
@@ -31,6 +32,7 @@ export class RoomsService {
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     private readonly memberships: MembershipService,
+    private readonly gateway: RoomsGateway,
   ) {}
 
   // ── Create ──────────────────────────────────────────────────────────────────
@@ -119,6 +121,12 @@ export class RoomsService {
 
     const membership = await this.memberships.createMembership(room.id, user.id, 'GUEST');
     const willNeedMemberUnlock = membership.joinOrder > room.baseCapacity;
+
+    this.gateway.emitMemberJoined(room.id, {
+      userId: user.id,
+      displayName: null,
+      joinOrder: membership.joinOrder,
+    });
 
     return {
       membership: membershipToDto(membership, room.baseCapacity, room.status),
@@ -258,6 +266,8 @@ export class RoomsService {
       where: { id: target.id },
       data: { leftAt: new Date() },
     });
+
+    this.gateway.emitMemberLeft(roomId, { userId: targetUserId });
   }
 
   // ── End room ─────────────────────────────────────────────────────────────────
@@ -273,6 +283,9 @@ export class RoomsService {
       data: { status: RoomStatus.ENDED, endedAt: new Date() },
       include: { _count: { select: { memberships: true, photos: true } } },
     });
+
+    this.gateway.emitRoomEnded(roomId);
+
     return this.toRoomDto(updated, callerId);
   }
 

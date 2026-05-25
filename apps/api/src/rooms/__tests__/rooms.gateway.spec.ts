@@ -157,6 +157,24 @@ describe('RoomsGateway', () => {
     });
   });
 
+  // ── room:join / room:leave ─────────────────────────────────────────────────
+
+  describe('handleRoomJoin', () => {
+    it('adds the socket to room:{roomId}', () => {
+      const client = { join: jest.fn() } as unknown as Socket;
+      gateway.handleRoomJoin(client, { roomId: 'r1' });
+      expect(client.join).toHaveBeenCalledWith('room:r1');
+    });
+  });
+
+  describe('handleRoomLeave', () => {
+    it('removes the socket from room:{roomId}', () => {
+      const client = { leave: jest.fn() } as unknown as Socket;
+      gateway.handleRoomLeave(client, { roomId: 'r2' });
+      expect(client.leave).toHaveBeenCalledWith('room:r2');
+    });
+  });
+
   // ── handleConnection ───────────────────────────────────────────────────────
 
   describe('handleConnection', () => {

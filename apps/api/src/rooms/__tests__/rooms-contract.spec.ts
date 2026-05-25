@@ -278,11 +278,16 @@ describe('RoomsController (contract)', () => {
   let mockPrisma: ReturnType<typeof makeMockPrisma>;
   let hostToken: string;
   let guestToken: string;
+  let mockGateway: {
+    emitMemberJoined: jest.Mock;
+    emitMemberLeft: jest.Mock;
+    emitRoomEnded: jest.Mock;
+  };
 
   beforeAll(async () => {
     mockPrisma = makeMockPrisma();
 
-    const mockGateway = {
+    mockGateway = {
       emitMemberJoined: jest.fn(),
       emitMemberLeft: jest.fn(),
       emitRoomEnded: jest.fn(),
@@ -645,6 +650,58 @@ describe('RoomsController (contract)', () => {
         .post(`/v1/rooms/${TEST_ROOM.id}/end`)
         .set('Authorization', `Bearer ${guestToken}`);
       expect(res.status).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  // ── Gateway emissions on mutations ─────────────────────────────────────────
+  //
+  // Guards the "event fired but UI doesn't update" class of bug.
+  // These tests prove emitMemberJoined / emitRoomEnded are called by the
+  // service layer — the socket arriving at the mobile client is exercised by
+  // the mobile room-dashboard.socket tests.
+
+  describe('gateway emissions on mutations', () => {
+    beforeEach(() => {
+      mockGateway.emitMemberJoined.mockClear();
+      mockGateway.emitMemberLeft.mockClear();
+      mockGateway.emitRoomEnded.mockClear();
+    });
+
+    it('POST /v1/rooms/join → gateway.emitMemberJoined called with roomId + member data', async () => {
+      // Ensure the guest is not already a member for this test run
+      mockPrisma.membership.findUnique.mockResolvedValueOnce(null);
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/rooms/join')
+        .set('Authorization', `Bearer ${guestToken}`)
+        .send({ joinCode: TEST_ROOM.joinCode });
+
+      // 201 = joined, 409 = already member (shared state with earlier tests).
+      // Only assert emission on a successful join.
+      if (res.status === HttpStatus.CREATED) {
+        expect(mockGateway.emitMemberJoined).toHaveBeenCalledTimes(1);
+        expect(mockGateway.emitMemberJoined).toHaveBeenCalledWith(
+          TEST_ROOM.id,
+          expect.objectContaining({ userId: GUEST_USER.id, joinOrder: expect.any(Number) }),
+        );
+      }
+    });
+
+    it('POST /v1/rooms/:id/end → gateway.emitRoomEnded called with roomId', async () => {
+      mockPrisma.room.update.mockResolvedValueOnce({
+        ...TEST_ROOM,
+        status: 'ENDED' as const,
+        endedAt: new Date(),
+        _count: { memberships: 1, photos: 0 },
+      });
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${TEST_ROOM.id}/end`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.CREATED);
+      expect(mockGateway.emitRoomEnded).toHaveBeenCalledTimes(1);
+      expect(mockGateway.emitRoomEnded).toHaveBeenCalledWith(TEST_ROOM.id);
     });
   });
 

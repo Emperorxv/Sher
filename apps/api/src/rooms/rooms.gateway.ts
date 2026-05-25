@@ -1,8 +1,11 @@
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import {
+  ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -88,6 +91,26 @@ export class RoomsGateway
 
   handleDisconnect(client: Socket) {
     this.logger.debug(`Client disconnected: ${client.id}`);
+  }
+
+  // ── Room channel subscription ─────────────────────────────────────────────
+
+  /**
+   * Client emits room:join after connecting to subscribe to events for a room.
+   * Adds the socket to the Socket.IO room `room:{roomId}` so it receives
+   * member:joined / member:left / room:ended broadcasts.
+   */
+  @SubscribeMessage('room:join')
+  handleRoomJoin(@ConnectedSocket() client: Socket, @MessageBody() data: { roomId: string }): void {
+    void client.join(`room:${data.roomId}`);
+  }
+
+  @SubscribeMessage('room:leave')
+  handleRoomLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string },
+  ): void {
+    void client.leave(`room:${data.roomId}`);
   }
 
   // ── Emit helpers (called by RoomsService) ────────────────────────────────
