@@ -14,11 +14,32 @@ export type RoomSocketEvents = {
 };
 
 let socket: Socket | null = null;
+/**
+ * The access token used to authenticate the current socket connection.
+ * Tracked so that connectRoomSocket can detect a user change (sign-out → sign-in
+ * on the same device) and force a reconnect with the new identity.
+ */
+let currentToken: string | null = null;
 
-/** Connect to the /rooms namespace with the given access token. */
+/**
+ * Connect to the /rooms namespace with the given access token.
+ *
+ * If a socket already exists that was authenticated with the SAME token, it is
+ * returned as-is (idempotent).  If the token has changed (different user signed
+ * in), the old socket is disconnected first to prevent the new user from
+ * receiving events over a connection still authenticated as the previous user.
+ */
 export function connectRoomSocket(accessToken: string): Socket {
-  if (socket?.connected) return socket;
+  if (socket?.connected && currentToken === accessToken) return socket;
 
+  // Token changed or socket is not connected — tear down any existing connection.
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+    currentToken = null;
+  }
+
+  currentToken = accessToken;
   socket = io(`${BASE_URL}/rooms`, {
     auth: { token: accessToken },
     transports: ['websocket'],
@@ -33,6 +54,7 @@ export function connectRoomSocket(accessToken: string): Socket {
 export function disconnectRoomSocket(): void {
   socket?.disconnect();
   socket = null;
+  currentToken = null;
 }
 
 /** Subscribe to a room channel and return an unsubscribe function. */

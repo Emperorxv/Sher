@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { UserDto } from '@sher/shared-types';
 import { apiClient, setSessionExpiredHandler } from '../lib/api';
+import { disconnectRoomSocket } from '../lib/socket';
 import { tokenStore } from '../lib/token-store';
 
 interface AuthState {
@@ -26,6 +27,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => {
   // Register the session-expired callback once the store is created.
   setSessionExpiredHandler(async () => {
+    disconnectRoomSocket();
     await tokenStore.clear();
     set({ user: null, isSignedIn: false });
   });
@@ -40,6 +42,10 @@ export const useAuthStore = create<AuthState>((set) => {
 
     verifyOtp: async (challengeId, code, email) => {
       const result = await apiClient.auth.verifyOtp({ challengeId, code, email });
+      // Clear any stale tokens from a previous session BEFORE writing the new
+      // pair.  Without this, a partial write (setAccess succeeds, setRefresh
+      // throws) would leave a mismatched access+refresh pair.
+      await tokenStore.clear();
       await tokenStore.setAccess(result.tokens.accessToken);
       await tokenStore.setRefresh(result.tokens.refreshToken);
       set({ user: result.user, isSignedIn: true });
@@ -51,6 +57,11 @@ export const useAuthStore = create<AuthState>((set) => {
       } catch {
         // Ignore — we clear locally regardless.
       }
+      // Disconnect the socket BEFORE clearing tokens so the gateway receives
+      // a clean close rather than a token-mismatch mid-flight.  Also prevents
+      // connectRoomSocket returning the stale socket to the next signed-in user
+      // on the same device if navigation and re-mount race the disconnect.
+      disconnectRoomSocket();
       await tokenStore.clear();
       set({ user: null, isSignedIn: false });
     },

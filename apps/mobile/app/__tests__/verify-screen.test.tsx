@@ -14,14 +14,17 @@
  * 1. requestOtp is NOT called on mount.
  * 2. requestOtp is NOT called when typing into the code field (< 6 digits).
  * 3. requestOtp IS called exactly once when the user presses "Resend code".
+ * 4. (Bug B) verifyOtp is NOT called on mount — no phantom auto-submit.
+ * 5. (Bug B) After a wrong-code rejection, the next correct-code attempt
+ *    is accepted (isVerifyingRef resets in the catch block).
  */
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
-// jest.mock is hoisted — the factory captures the module-level mockRequestOtp
-// binding, so reassigning mockRequestOtp.mockX in beforeEach propagates
-// without needing resetModules (which would create multiple React copies).
+// jest.mock is hoisted — the factory captures the module-level mock bindings,
+// so reassigning mockX.mockX in beforeEach propagates without resetModules.
 
 const mockRequestOtp = jest.fn();
+const mockVerifyOtp = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ replace: jest.fn() })),
@@ -31,7 +34,7 @@ jest.mock('expo-router', () => ({
 jest.mock('../../stores/auth', () => ({
   useAuthStore: jest.fn((selector: (s: unknown) => unknown) =>
     selector({
-      verifyOtp: jest.fn().mockResolvedValue(undefined),
+      verifyOtp: mockVerifyOtp,
       requestOtp: mockRequestOtp,
     }),
   ),
@@ -52,12 +55,14 @@ function renderVerify() {
   return render(<VerifyScreen />);
 }
 
-// ── Suite ─────────────────────────────────────────────────────────────────────
+// ── Suite A: requestOtp call discipline ──────────────────────────────────────
 
 describe('VerifyScreen — requestOtp call discipline', () => {
   beforeEach(() => {
     mockRequestOtp.mockClear();
+    mockVerifyOtp.mockClear();
     mockRequestOtp.mockResolvedValue({ challengeId: 'ch-new' });
+    mockVerifyOtp.mockResolvedValue(undefined);
   });
 
   it('does NOT call requestOtp on mount', () => {
@@ -79,5 +84,50 @@ describe('VerifyScreen — requestOtp call discipline', () => {
       fireEvent.press(getByText('Resend code'));
     });
     expect(mockRequestOtp).toHaveBeenCalledTimes(1);
+  });
+
+  // Bug B regression guard: verify screen must not auto-submit on mount.
+  it('does NOT call verifyOtp on mount — no phantom auto-submit of empty code', () => {
+    renderVerify();
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
+  });
+});
+
+// ── Suite B: wrong-code then correct-code (Bug B) ────────────────────────────
+
+describe('VerifyScreen — wrong code then correct code succeeds (Bug B)', () => {
+  beforeEach(() => {
+    mockRequestOtp.mockClear();
+    mockVerifyOtp.mockClear();
+  });
+
+  it('resets the verifying guard after a wrong-code rejection so the next attempt is accepted', async () => {
+    // First call: wrong code → reject
+    mockVerifyOtp.mockRejectedValueOnce(new Error('OTP_WRONG_CODE'));
+    // Second call: correct code → resolve
+    mockVerifyOtp.mockResolvedValueOnce(undefined);
+
+    const { getByLabelText, getByText } = renderVerify();
+    const input = getByLabelText('One-time code');
+
+    // First attempt: type 6 digits (auto-submit)
+    await act(async () => {
+      fireEvent.changeText(input, '000000');
+    });
+
+    // Error banner must appear
+    expect(getByText('Wrong code. Double-check and try again.')).toBeTruthy();
+    // First verifyOtp call happened
+    expect(mockVerifyOtp).toHaveBeenCalledTimes(1);
+
+    // Clear and enter the correct code — should trigger a second call
+    await act(async () => {
+      fireEvent.changeText(input, '');
+      fireEvent.changeText(input, '111111');
+    });
+
+    // isVerifyingRef was reset in the catch block — second call must have fired
+    expect(mockVerifyOtp).toHaveBeenCalledTimes(2);
+    expect(mockVerifyOtp).toHaveBeenNthCalledWith(2, 'ch-1', '111111', undefined);
   });
 });
