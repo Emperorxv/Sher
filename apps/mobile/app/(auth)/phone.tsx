@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,13 +19,18 @@ export default function PhoneScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Synchronous guard prevents double-fire from onSubmitEditing + onPress
+  // racing before React processes the setLoading(true) state update.
+  const isSubmittingRef = useRef(false);
 
   async function handleSubmit() {
+    if (isSubmittingRef.current) return;
     const trimmed = phone.trim();
     if (!trimmed) {
       setError('Enter your phone number to continue.');
       return;
     }
+    isSubmittingRef.current = true;
     setError(null);
     setLoading(true);
     try {
@@ -35,6 +40,7 @@ export default function PhoneScreen() {
       setError("Couldn't send the code. Check your number and try again.");
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   }
 

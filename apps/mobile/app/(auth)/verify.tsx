@@ -32,6 +32,9 @@ export default function VerifyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  // Synchronous guard: auto-submit on 6th digit and manual Verify button can
+  // both call handleVerify in the same JS tick before loading state updates.
+  const isVerifyingRef = useRef(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -39,6 +42,8 @@ export default function VerifyScreen() {
 
   async function handleVerify(value: string) {
     if (value.length < CODE_LENGTH) return;
+    if (isVerifyingRef.current) return;
+    isVerifyingRef.current = true;
     setError(null);
     setLoading(true);
     try {
@@ -48,6 +53,7 @@ export default function VerifyScreen() {
     } catch {
       setError('Wrong code. Double-check and try again.');
       setLoading(false);
+      isVerifyingRef.current = false;
     }
   }
 
