@@ -81,3 +81,16 @@ export function useEndRoom() {
     },
   });
 }
+
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ roomId, userId }: { roomId: string; userId: string }) =>
+      apiClient.rooms.removeMember(roomId, userId),
+    onSuccess: (_, { roomId }) => {
+      void qc.invalidateQueries({ queryKey: roomKeys.members(roomId) });
+      void qc.invalidateQueries({ queryKey: roomKeys.detail(roomId) });
+      void qc.invalidateQueries({ queryKey: roomKeys.list() });
+    },
+  });
+}

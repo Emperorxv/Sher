@@ -21,8 +21,11 @@
 
 // ── Hoisted module mocks ──────────────────────────────────────────────────────
 
+// Must start with 'mock' to be hoisted alongside jest.mock() calls by babel-jest.
+const mockRouterReplace = jest.fn();
+
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() })),
+  useRouter: jest.fn(() => ({ push: jest.fn(), replace: mockRouterReplace, back: jest.fn() })),
   useLocalSearchParams: jest.fn(() => ({ id: 'room-test-1' })),
 }));
 
@@ -40,6 +43,7 @@ jest.mock('../../lib/rooms', () => ({
   useRoom: jest.fn(() => ({ data: null, isLoading: true })),
   useRoomMembers: jest.fn(() => ({ data: null })),
   useEndRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useRemoveMember: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useCreateRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useJoinRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   roomKeys: {
@@ -154,5 +158,35 @@ describe('RoomDashboard socket → query invalidation', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
     // members key must NOT be invalidated for room:ended (no member list change)
     expect(spy).not.toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+  });
+
+  it('member:left with the current user id → invalidates queries AND navigates to /rooms', async () => {
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    mockRouterReplace.mockClear();
+    // The auth mock returns user.id = 'user-test-1'; simulate THIS user being removed.
+    await renderAndWaitForSubscription(qc);
+
+    capturedHandlers['member:left']?.({ roomId: ROOM_ID, userId: 'user-test-1' });
+
+    // Queries are still invalidated (remaining clients need to update)
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
+    // Removed user is navigated back to the rooms list
+    expect(mockRouterReplace).toHaveBeenCalledWith('/rooms');
+  });
+
+  it('member:left for a DIFFERENT user id → invalidates queries but does NOT navigate', async () => {
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    mockRouterReplace.mockClear();
+    await renderAndWaitForSubscription(qc);
+
+    // A different user left — current user ('user-test-1') is unaffected
+    capturedHandlers['member:left']?.({ roomId: ROOM_ID, userId: 'other-user-id' });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
+    expect(mockRouterReplace).not.toHaveBeenCalledWith('/rooms');
   });
 });

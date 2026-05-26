@@ -349,6 +349,41 @@ describe('rooms api client — payload shapes', () => {
     });
   });
 
+  // ─── DELETE /v1/rooms/:id/members/:userId ────────────────────────────────
+
+  describe('rooms.removeMember', () => {
+    it('sends DELETE with no body to the correct URL and consumes 204 No Content', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new Error('no body')),
+      } as unknown as Response);
+
+      const client = createApiClient(makeOptions());
+      const result = await client.rooms.removeMember('room-test-1', 'user-guest-1');
+
+      expect(capturedUrl(mockFetch)).toBe(`${BASE_URL}/v1/rooms/room-test-1/members/user-guest-1`);
+      expect(capturedMethod(mockFetch)).toBe('DELETE');
+      expect(capturedBody(mockFetch)).toBeUndefined();
+      // 204 → void (undefined)
+      expect(result).toBeUndefined();
+    });
+
+    it('self-leave: same URL works for guest removing themselves', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new Error('no body')),
+      } as unknown as Response);
+
+      const client = createApiClient(makeOptions());
+      await client.rooms.removeMember('room-test-1', 'user-self-1');
+
+      expect(capturedUrl(mockFetch)).toBe(`${BASE_URL}/v1/rooms/room-test-1/members/user-self-1`);
+      expect(capturedMethod(mockFetch)).toBe('DELETE');
+    });
+  });
+
   // ─── POST /v1/rooms/:id/end ───────────────────────────────────────────────
 
   describe('rooms.end', () => {

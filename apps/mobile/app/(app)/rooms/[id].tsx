@@ -1,6 +1,7 @@
 /**
  * Room dashboard — shows details, QR code, member list.
- * Host can end the room from here.
+ * Host can end the room or remove members.
+ * Guests can leave the room.
  * Phase 4: real-time updates via Socket.IO subscription.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -19,13 +21,21 @@ import QRCode from 'react-native-qrcode-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@sher/shared-types';
 import { Button, JoinCodeDisplay } from '../../../components';
-import { useRoom, useRoomMembers, useEndRoom, roomKeys } from '../../../lib/rooms';
+import { useRoom, useRoomMembers, useEndRoom, useRemoveMember, roomKeys } from '../../../lib/rooms';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
 import { useAuthStore } from '../../../stores/auth';
 import { colors, fonts, fontSizes, radii, spacing } from '../../../theme';
 
-function MemberRow({ member }: { member: MemberDto }) {
+function MemberRow({
+  member,
+  onRemove,
+  removeDisabled,
+}: {
+  member: MemberDto;
+  onRemove?: () => void;
+  removeDisabled?: boolean;
+}) {
   const roleColor: Record<string, string> = {
     HOST: colors.violet,
     COHOST: colors.accent,
@@ -42,6 +52,19 @@ function MemberRow({ member }: { member: MemberDto }) {
         <Text style={styles.roleText}>{member.role}</Text>
       </View>
       <Text style={styles.unlockIcon}>{unlockIcon}</Text>
+      {onRemove && (
+        <Pressable
+          onPress={onRemove}
+          disabled={removeDisabled}
+          style={styles.removeBtn}
+          accessibilityLabel={`Remove ${member.displayName ?? member.userId.slice(-8)} from room`}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.removeBtnText, removeDisabled && styles.removeBtnDisabled]}>
+            Remove
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -51,10 +74,12 @@ export default function RoomDashboard() {
   const router = useRouter();
   const qc = useQueryClient();
   const { user } = useAuthStore();
+  const userId = user?.id;
 
   const { data: room, isLoading } = useRoom(id ?? '');
   const { data: membersPage } = useRoomMembers(id ?? '');
   const endRoom = useEndRoom();
+  const removeMember = useRemoveMember();
 
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -71,9 +96,13 @@ export default function RoomDashboard() {
           void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
         },
-        'member:left': () => {
+        'member:left': (data) => {
           void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
+          // If the current user was removed by the host, navigate back.
+          if (data.userId === userId) {
+            router.replace('/rooms');
+          }
         },
         'room:ended': () => {
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
@@ -85,7 +114,7 @@ export default function RoomDashboard() {
       cancelled = true;
       unsubscribeRef.current?.();
     };
-  }, [id, qc]);
+  }, [id, qc, userId, router]);
 
   // Disconnect socket when all room screens are unmounted
   useEffect(() => {
@@ -117,6 +146,48 @@ export default function RoomDashboard() {
     );
   }
 
+  async function handleLeaveRoom() {
+    if (!id || !userId) return;
+    const myUserId = userId;
+    Alert.alert('Leave this room?', "You'll need a new invite to rejoin.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave room',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeMember.mutateAsync({ roomId: id, userId: myUserId });
+            router.replace('/rooms');
+          } catch (err: unknown) {
+            Alert.alert('Could not leave room', err instanceof Error ? err.message : 'Try again.');
+          }
+        },
+      },
+    ]);
+  }
+
+  function handleRemoveMember(member: MemberDto) {
+    if (!id) return;
+    const name = member.displayName ?? `member ${member.userId.slice(-8)}`;
+    Alert.alert(`Remove ${name}?`, "They'll need a new invite to rejoin.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeMember.mutateAsync({ roomId: id, userId: member.userId });
+          } catch (err: unknown) {
+            Alert.alert(
+              'Could not remove member',
+              err instanceof Error ? err.message : 'Try again.',
+            );
+          }
+        },
+      },
+    ]);
+  }
+
   if (isLoading || !room) {
     return (
       <SafeAreaView style={[styles.safe, styles.centered]}>
@@ -125,7 +196,7 @@ export default function RoomDashboard() {
     );
   }
 
-  const isHost = room.hostId === user?.id;
+  const isHost = room.hostId === userId;
   const isActive = room.status === 'ACTIVE';
 
   return (
@@ -177,7 +248,17 @@ export default function RoomDashboard() {
           <FlatList
             data={membersPage?.items ?? []}
             keyExtractor={(m) => m.userId}
-            renderItem={({ item }) => <MemberRow member={item} />}
+            renderItem={({ item }) => (
+              <MemberRow
+                member={item}
+                onRemove={
+                  isHost && isActive && item.role !== 'HOST'
+                    ? () => handleRemoveMember(item)
+                    : undefined
+                }
+                removeDisabled={removeMember.isPending}
+              />
+            )}
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
@@ -191,6 +272,17 @@ export default function RoomDashboard() {
             onPress={handleEndRoom}
             disabled={endRoom.isPending}
             style={styles.endBtn}
+          />
+        )}
+
+        {/* Guest leave */}
+        {!isHost && isActive && (
+          <Button
+            label={removeMember.isPending ? 'Leaving…' : 'Leave room'}
+            variant="danger"
+            onPress={handleLeaveRoom}
+            disabled={removeMember.isPending}
+            style={styles.leaveBtn}
           />
         )}
       </ScrollView>
@@ -310,11 +402,26 @@ const styles = StyleSheet.create({
   unlockIcon: {
     fontSize: 16,
   },
+  removeBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  removeBtnText: {
+    fontFamily: fonts.label,
+    fontSize: fontSizes.caption,
+    color: colors.danger,
+  },
+  removeBtnDisabled: {
+    opacity: 0.4,
+  },
   separator: {
     height: 1,
     backgroundColor: colors.fog,
   },
   endBtn: {
+    marginTop: spacing.sm,
+  },
+  leaveBtn: {
     marginTop: spacing.sm,
   },
 });

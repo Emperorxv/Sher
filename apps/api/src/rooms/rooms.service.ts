@@ -246,7 +246,19 @@ export class RoomsService {
   // ── Remove member ─────────────────────────────────────────────────────────
 
   async removeMember(roomId: string, callerId: string, targetUserId: string): Promise<void> {
-    await this.requireHostMembership(roomId, callerId);
+    const isSelfLeave = callerId === targetUserId;
+
+    if (isSelfLeave) {
+      // Any active member may leave their own room, except the host.
+      const callerMembership = await this.requireMembership(roomId, callerId);
+      if (callerMembership.role === 'HOST') {
+        throw new ForbiddenException('HOST_CANNOT_LEAVE');
+      }
+    } else {
+      // Removing another member requires HOST role.
+      await this.requireHostMembership(roomId, callerId);
+    }
+
     const room = await this.prisma.room.findUniqueOrThrow({ where: { id: roomId } });
     if (room.status !== RoomStatus.ACTIVE) throw new ForbiddenException('ROOM_NOT_ACTIVE');
 
@@ -254,9 +266,9 @@ export class RoomsService {
       where: { roomId_userId: { roomId, userId: targetUserId } },
     });
     if (!target) throw new NotFoundException('MEMBER_NOT_FOUND');
-    if (target.role === 'HOST') throw new ForbiddenException('CANNOT_REMOVE_HOST');
+    // Only block HOST removal when it's a host-remove action, not self-leave.
+    if (!isSelfLeave && target.role === 'HOST') throw new ForbiddenException('CANNOT_REMOVE_HOST');
 
-    // Check no photos captured before removing.
     const photoCount = await this.prisma.photo.count({
       where: { roomId, uploaderId: targetUserId },
     });

@@ -153,6 +153,9 @@ export function createApiClient(opts: ApiClientOptions) {
 
     end: (roomId: string) => rawFetch<RoomDto>(`/v1/rooms/${roomId}/end`, { method: 'POST' }),
 
+    removeMember: (roomId: string, userId: string) =>
+      rawFetch<void>(`/v1/rooms/${roomId}/members/${userId}`, { method: 'DELETE' }),
+
     pricing: (roomId: string) => rawFetch<PricingQuoteDto>(`/v1/rooms/${roomId}/pricing`),
 
     members: (roomId: string, page = 1, pageSize = 20) =>

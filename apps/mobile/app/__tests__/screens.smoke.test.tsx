@@ -67,6 +67,7 @@ jest.mock('../../lib/rooms', () => ({
   useCreateRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useJoinRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useEndRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useRemoveMember: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   roomKeys: {
     all: ['rooms'],
     list: () => ['rooms', 'list'],

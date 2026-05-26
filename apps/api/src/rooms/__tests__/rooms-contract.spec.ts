@@ -107,6 +107,19 @@ const HOST_MEMBERSHIP = {
   leftAt: null,
 };
 
+const GUEST_MEMBERSHIP = {
+  id: 'mem-guest-1',
+  roomId: TEST_ROOM.id,
+  userId: GUEST_USER.id,
+  role: 'GUEST' as const,
+  joinOrder: 2,
+  unlockState: 'LOCKED' as const,
+  unlockedAt: null,
+  unlockPaymentId: null,
+  joinedAt: new Date('2026-05-22T09:00:00Z'),
+  leftAt: null,
+};
+
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
 type MockMembership = {
@@ -650,6 +663,118 @@ describe('RoomsController (contract)', () => {
         .post(`/v1/rooms/${TEST_ROOM.id}/end`)
         .set('Authorization', `Bearer ${guestToken}`);
       expect(res.status).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  // ── DELETE /v1/rooms/:id/members/:userId ────────────────────────────────────
+
+  describe('DELETE /v1/rooms/:id/members/:userId', () => {
+    beforeEach(() => {
+      mockGateway.emitMemberLeft.mockClear();
+    });
+
+    it('204 — host removes a non-host member', async () => {
+      // Queue: call 1 → requireHostMembership (HOST lookup), call 2 → target (GUEST lookup)
+      mockPrisma.membership.findUnique
+        .mockResolvedValueOnce(HOST_MEMBERSHIP)
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${GUEST_USER.id}`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.NO_CONTENT);
+      expect(mockGateway.emitMemberLeft).toHaveBeenCalledWith(
+        TEST_ROOM.id,
+        expect.objectContaining({ userId: GUEST_USER.id }),
+      );
+    });
+
+    it('204 — guest self-leave (member removes themselves)', async () => {
+      // Self-leave: callerId === targetUserId, only one membership lookup needed
+      // call 1 → requireMembership (GUEST lookup), call 2 → target lookup (same GUEST)
+      mockPrisma.membership.findUnique
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP)
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${GUEST_USER.id}`)
+        .set('Authorization', `Bearer ${guestToken}`);
+
+      expect(res.status).toBe(HttpStatus.NO_CONTENT);
+      expect(mockGateway.emitMemberLeft).toHaveBeenCalledWith(
+        TEST_ROOM.id,
+        expect.objectContaining({ userId: GUEST_USER.id }),
+      );
+    });
+
+    it('403 — guest cannot remove another member (HOST_ONLY)', async () => {
+      // Guest tries to remove someone else → requireHostMembership finds GUEST role → HOST_ONLY
+      mockPrisma.membership.findUnique.mockResolvedValueOnce(GUEST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${HOST_USER.id}`)
+        .set('Authorization', `Bearer ${guestToken}`);
+
+      expect(res.status).toBe(HttpStatus.FORBIDDEN);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).not.toBe('BAD_REQUEST');
+    });
+
+    it('403 — host cannot leave their own room (HOST_CANNOT_LEAVE)', async () => {
+      // Host tries self-leave → role === HOST → HOST_CANNOT_LEAVE
+      mockPrisma.membership.findUnique.mockResolvedValueOnce(HOST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${HOST_USER.id}`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.FORBIDDEN);
+      const { error } = res.body as { error: { code: string; message: string } };
+      expect(error.message).toContain('HOST_CANNOT_LEAVE');
+    });
+
+    it('404 — target member not found', async () => {
+      // Host lookup succeeds; target returns null
+      mockPrisma.membership.findUnique
+        .mockResolvedValueOnce(HOST_MEMBERSHIP)
+        .mockResolvedValueOnce(null);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/nonexistent-user`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('403 — member has photos; cannot be removed', async () => {
+      mockPrisma.membership.findUnique
+        .mockResolvedValueOnce(HOST_MEMBERSHIP)
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP);
+      mockPrisma.photo.count.mockResolvedValueOnce(2); // has photos
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${GUEST_USER.id}`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.FORBIDDEN);
+      const { error } = res.body as { error: { code: string; message: string } };
+      expect(error.message).toContain('MEMBER_HAS_PHOTOS');
+    });
+
+    it('gateway.emitMemberLeft is called with roomId and userId on successful remove', async () => {
+      mockPrisma.membership.findUnique
+        .mockResolvedValueOnce(HOST_MEMBERSHIP)
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/rooms/${TEST_ROOM.id}/members/${GUEST_USER.id}`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(mockGateway.emitMemberLeft).toHaveBeenCalledTimes(1);
+      expect(mockGateway.emitMemberLeft).toHaveBeenCalledWith(TEST_ROOM.id, {
+        userId: GUEST_USER.id,
+      });
     });
   });
 
