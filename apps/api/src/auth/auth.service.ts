@@ -40,9 +40,10 @@ export class AuthService {
     const isNewUser = !existing;
 
     if (isNewUser && !dto.email) {
-      throw new BadRequestException(
-        'EMAIL_REQUIRED: email is required when creating a new account.',
-      );
+      throw new BadRequestException({
+        code: 'EMAIL_REQUIRED',
+        message: 'Email is required to create your account.',
+      });
     }
 
     let user: User;

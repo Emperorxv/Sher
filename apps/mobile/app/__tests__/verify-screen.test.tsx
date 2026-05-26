@@ -1,5 +1,6 @@
 /**
- * Guards the OTP double-fire bug class on the verify screen.
+ * Guards the OTP double-fire bug class on the verify screen, and
+ * verifies that the error handler maps API errors to the correct messages.
  *
  * TARGET BUG CLASS
  * ─────────────────
@@ -17,6 +18,10 @@
  * 4. (Bug B) verifyOtp is NOT called on mount — no phantom auto-submit.
  * 5. (Bug B) After a wrong-code rejection, the next correct-code attempt
  *    is accepted (isVerifyingRef resets in the catch block).
+ * 6. (Error mapping) EMAIL_REQUIRED → user-facing message, NOT "Wrong code".
+ * 7. (Error mapping) 401 OTP errors → "Wrong code".
+ * 8. (Error mapping) Unknown ApiError → API message surfaced.
+ * 9. (Error mapping) Non-ApiError (network failure, etc.) → generic message.
  */
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
@@ -44,6 +49,7 @@ jest.mock('../../stores/auth', () => ({
 
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
+import { ApiError } from '@sher/api-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -102,8 +108,10 @@ describe('VerifyScreen — wrong code then correct code succeeds (Bug B)', () =>
   });
 
   it('resets the verifying guard after a wrong-code rejection so the next attempt is accepted', async () => {
-    // First call: wrong code → reject
-    mockVerifyOtp.mockRejectedValueOnce(new Error('OTP_WRONG_CODE'));
+    // First call: wrong code (401) → reject
+    mockVerifyOtp.mockRejectedValueOnce(
+      new ApiError(401, 'UNAUTHORIZED', 'OTP_WRONG_CODE: Incorrect code.'),
+    );
     // Second call: correct code → resolve
     mockVerifyOtp.mockResolvedValueOnce(undefined);
 
@@ -115,7 +123,7 @@ describe('VerifyScreen — wrong code then correct code succeeds (Bug B)', () =>
       fireEvent.changeText(input, '000000');
     });
 
-    // Error banner must appear
+    // Error banner must appear — 401 maps to "Wrong code"
     expect(getByText('Wrong code. Double-check and try again.')).toBeTruthy();
     // First verifyOtp call happened
     expect(mockVerifyOtp).toHaveBeenCalledTimes(1);
@@ -129,5 +137,66 @@ describe('VerifyScreen — wrong code then correct code succeeds (Bug B)', () =>
     // isVerifyingRef was reset in the catch block — second call must have fired
     expect(mockVerifyOtp).toHaveBeenCalledTimes(2);
     expect(mockVerifyOtp).toHaveBeenNthCalledWith(2, 'ch-1', '111111', undefined);
+  });
+});
+
+// ── Suite C: error handler maps API errors to correct user messages ───────────
+
+describe('VerifyScreen — error handler surfaces correct message per error class', () => {
+  beforeEach(() => {
+    mockRequestOtp.mockClear();
+    mockVerifyOtp.mockClear();
+  });
+
+  it('EMAIL_REQUIRED → shows email prompt, NOT "Wrong code"', async () => {
+    mockVerifyOtp.mockRejectedValueOnce(
+      new ApiError(400, 'EMAIL_REQUIRED', 'Email is required to create your account.'),
+    );
+
+    const { getByLabelText, getByText, queryByText } = renderVerify();
+    await act(async () => {
+      fireEvent.changeText(getByLabelText('One-time code'), '123456');
+    });
+
+    expect(getByText('Enter your email address to create your account.')).toBeTruthy();
+    // Must NOT misreport as a wrong-code error
+    expect(queryByText('Wrong code. Double-check and try again.')).toBeNull();
+  });
+
+  it('401 OTP error → shows "Wrong code"', async () => {
+    mockVerifyOtp.mockRejectedValueOnce(
+      new ApiError(401, 'UNAUTHORIZED', 'OTP_WRONG_CODE: Incorrect code.'),
+    );
+
+    const { getByLabelText, getByText } = renderVerify();
+    await act(async () => {
+      fireEvent.changeText(getByLabelText('One-time code'), '999999');
+    });
+
+    expect(getByText('Wrong code. Double-check and try again.')).toBeTruthy();
+  });
+
+  it('unknown ApiError → surfaces the API message verbatim', async () => {
+    mockVerifyOtp.mockRejectedValueOnce(
+      new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try again later.'),
+    );
+
+    const { getByLabelText, getByText } = renderVerify();
+    await act(async () => {
+      fireEvent.changeText(getByLabelText('One-time code'), '123456');
+    });
+
+    expect(getByText('Too many attempts. Try again later.')).toBeTruthy();
+  });
+
+  it('non-ApiError (network failure) → shows generic message', async () => {
+    mockVerifyOtp.mockRejectedValueOnce(new TypeError('Network request failed'));
+
+    const { getByLabelText, getByText } = renderVerify();
+    await act(async () => {
+      fireEvent.changeText(getByLabelText('One-time code'), '123456');
+    });
+
+    expect(getByText('Something went wrong. Please try again.')).toBeTruthy();
   });
 });

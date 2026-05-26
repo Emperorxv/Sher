@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ApiError } from '@sher/api-client';
 import { Button } from '../../components';
 import { useAuthStore } from '../../stores/auth';
 import { colors, fonts, fontSizes, radii, spacing } from '../../theme';
@@ -66,8 +67,16 @@ export default function VerifyScreen() {
       await verifyOtp(challengeId, value, email.trim() || undefined);
       // On success the auth store sets tokens; navigate to main app.
       router.replace('/(app)/rooms');
-    } catch {
-      setError('Wrong code. Double-check and try again.');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError('Wrong code. Double-check and try again.');
+      } else if (err instanceof ApiError && err.code === 'EMAIL_REQUIRED') {
+        setError('Enter your email address to create your account.');
+      } else if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
       setLoading(false);
       isVerifyingRef.current = false;
     }
@@ -121,7 +130,7 @@ export default function VerifyScreen() {
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="Email (optional)"
+            placeholder="Email address"
             placeholderTextColor={colors.fog}
             keyboardType="email-address"
             textContentType="emailAddress"
@@ -130,6 +139,7 @@ export default function VerifyScreen() {
             returnKeyType="done"
             accessibilityLabel="Email address"
           />
+          <Text style={styles.hint}>Required if you're signing up for the first time.</Text>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {resent ? <Text style={styles.sentText}>Code resent!</Text> : null}
@@ -200,6 +210,13 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: colors.danger,
+  },
+  hint: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.caption,
+    color: colors.ink,
+    opacity: 0.55,
+    marginTop: -spacing.xs,
   },
   errorText: {
     fontFamily: fonts.body,

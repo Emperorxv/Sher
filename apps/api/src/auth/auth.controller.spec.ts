@@ -296,11 +296,26 @@ describe('AuthController (integration)', () => {
       expect(data.tokens.refreshToken).toBeTruthy();
     });
 
-    it('400 when new user omits email', async () => {
+    it('400 EMAIL_REQUIRED when new user omits email — error code is not generic BAD_REQUEST', async () => {
       const res = await request(app.getHttpServer())
         .post('/v1/auth/otp/verify')
         .send({ challengeId: CHALLENGE_ID, code: '123456' });
       expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      const { error } = res.body as { error: { code: string; message: string } };
+      expect(error.code).toBe('EMAIL_REQUIRED');
+      expect(error.message).toContain('Email is required');
+    });
+
+    it('EMAIL_REQUIRED is not "Wrong code" — OTP succeeds but missing email is a distinct error', async () => {
+      // OTP verification passes (mock resolves); email is absent → EMAIL_REQUIRED, not a generic 400
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/otp/verify')
+        .send({ challengeId: CHALLENGE_ID, code: '123456' });
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      const { error } = res.body as { error: { code: string } };
+      // Must not be a generic code — the caller can distinguish this from an OTP failure
+      expect(error.code).not.toBe('BAD_REQUEST');
+      expect(error.code).toBe('EMAIL_REQUIRED');
     });
 
     it('200 for returning user — email not required', async () => {
