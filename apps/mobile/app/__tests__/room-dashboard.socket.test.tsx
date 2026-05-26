@@ -7,6 +7,12 @@
  * dashboard doesn't re-render because the event handler never calls
  * queryClient.invalidateQueries — or calls it with the wrong key.
  *
+ * Variant caught here: the member-list header updates (roomKeys.members
+ * was invalidated) but the "members" stat tile still shows the old count
+ * because roomKeys.detail was NOT invalidated. room.memberCount is read
+ * from useRoom (roomKeys.detail), while membersPage.total is read from
+ * useRoomMembers (roomKeys.members). Both must be invalidated together.
+ *
  * HOW THIS TEST WORKS
  * ────────────────────
  * 1. subscribeToRoom is mocked to capture the handler functions that
@@ -188,5 +194,39 @@ describe('RoomDashboard socket → query invalidation', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
     expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
     expect(mockRouterReplace).not.toHaveBeenCalledWith('/rooms');
+  });
+
+  /**
+   * Stat-tile regression guard.
+   *
+   * The dashboard renders two independent data sources side-by-side:
+   *   • "MEMBERS (N)" list header  → membersPage.total from useRoomMembers (roomKeys.members)
+   *   • "N members" stat tile      → room.memberCount  from useRoom        (roomKeys.detail)
+   *
+   * If only roomKeys.members is invalidated on a membership change, the list
+   * header updates but the stat tile retains the stale count, showing a
+   * contradictory UI (e.g. list says 3, tile says 4).
+   *
+   * Both roomKeys.detail AND roomKeys.members must be invalidated for every
+   * event that changes the member count (member:joined, member:left).
+   */
+  it('stat tile: member:joined and member:left both invalidate roomKeys.detail (keeps room.memberCount in sync)', async () => {
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    await renderAndWaitForSubscription(qc);
+
+    // member:joined — new member appears in list and stat tile increments
+    capturedHandlers['member:joined']?.({ roomId: ROOM_ID, userId: 'u-new', joinOrder: 3 });
+    // roomKeys.detail MUST be invalidated so useRoom re-fetches room.memberCount
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
+    // roomKeys.members MUST also be invalidated so useRoomMembers re-fetches membersPage.total
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+
+    spy.mockClear();
+
+    // member:left — member removed, both counts must decrement together
+    capturedHandlers['member:left']?.({ roomId: ROOM_ID, userId: 'u-other' });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
   });
 });

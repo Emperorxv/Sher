@@ -71,9 +71,9 @@ jest.mock('../../lib/rooms', () => ({
   roomKeys: {
     all: ['rooms'],
     list: () => ['rooms', 'list'],
-    detail: (id: string) => ['rooms', id],
-    members: (id: string) => ['rooms', id, 'members'],
-    pricing: (id: string) => ['rooms', id, 'pricing'],
+    detail: (id: string) => ['rooms', 'detail', id],
+    members: (id: string) => ['rooms', 'members', id],
+    pricing: (id: string) => ['rooms', 'pricing', id],
   },
 }));
 
