@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
+import { DevOtpStore } from '../../dev/dev-otp.store';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TermiiClient } from './termii.client';
 import { TermiiMockClient } from './termii-mock.client';
@@ -17,11 +25,15 @@ interface SmsClientLike {
 @Injectable()
 export class OtpService {
   private readonly smsClient: SmsClientLike;
+  // DEV DIAGNOSTIC — Logger is safe to keep; it adds no overhead when unused.
+  private readonly logger = new Logger(OtpService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     termii: TermiiClient,
     termiiMock: TermiiMockClient,
+    // DEV DIAGNOSTIC — optional so AuthModule never needs to import DevOtpModule.
+    @Optional() @Inject(DevOtpStore) private readonly devOtpStore?: DevOtpStore,
   ) {
     this.smsClient = process.env['OTP_MOCK'] === 'true' ? termiiMock : termii;
   }
@@ -80,7 +92,47 @@ export class OtpService {
       data: { attempts: { increment: 1 } },
     });
 
+    // ── DEV-ONLY DIAGNOSTIC ──────────────────────────────────────────────────
+    // Hard-gated on NODE_ENV=development.  Never runs in staging or production
+    // because DevOtpModule is not imported there and this block is skipped.
+    if (process.env['NODE_ENV'] === 'development') {
+      const phoneRaw = challenge.phone;
+      const phoneNormalized = challenge.phone.trim();
+      this.logger.log(
+        {
+          diag: 'verifyOtp:pre-bcrypt',
+          // (a) request identifiers — phone is not sent in the verify body;
+          //     it is derived from the challenge row.
+          challengeIdFromBody: challengeId,
+          codeFromBody: code,
+          phoneFromChallenge: phoneRaw,
+          // (b) OtpChallenge row as retrieved at method entry (attempts reflects
+          //     the pre-increment value; DB now has attempts + 1).
+          challengeInDb: {
+            id: challenge.id,
+            phoneRaw,
+            phoneNormalized,
+            attempts: challenge.attempts,
+            expiresAt: challenge.expiresAt,
+            consumedAt: challenge.consumedAt,
+            codeHashPrefix: challenge.codeHash.slice(0, 8),
+          },
+          // (c) what the dev store has for this phone right now
+          devStoreLookup: this.devOtpStore?.get(phoneRaw) ?? null,
+        },
+        'DIAG verifyOtp',
+      );
+    }
+    // ── END DEV-ONLY DIAGNOSTIC ──────────────────────────────────────────────
+
     const valid = await bcrypt.compare(code, challenge.codeHash);
+
+    // ── DEV-ONLY DIAGNOSTIC: bcrypt result ───────────────────────────────────
+    if (process.env['NODE_ENV'] === 'development') {
+      this.logger.log({ diag: 'verifyOtp:bcrypt-result', valid }, 'DIAG verifyOtp');
+    }
+    // ── END DEV-ONLY DIAGNOSTIC ──────────────────────────────────────────────
+
     if (!valid) {
       throw new UnauthorizedException('OTP_WRONG_CODE: Incorrect code.');
     }
