@@ -193,7 +193,76 @@ describe('DevOtpStore — per-phone isolation prevents Bug B wrong-code scenario
   });
 });
 
-// ── 3. Attempt limit: locked challenge cannot be unlocked ────────────────────
+// ── 3. requestOtp→devStore→verifyOtp roundtrip is phone-key consistent ───────
+//
+// For any phone string the mobile app might send, the code the devStore stores
+// under that string must be the code that can verify the challenge created for
+// that string.  If the two keys diverged (e.g. one side normalised and the other
+// didn't), the user would see 401 "wrong code" even though they typed what the
+// dev endpoint returned.
+
+describe('OtpService — requestOtp/devStore/verifyOtp roundtrip consistency', () => {
+  const E164_FORMATS = [
+    '+2348023456789', // Nigerian NGN number (the Sim 2 repro)
+    '+2348012345678', // Nigerian NGN — second sim
+    '+12025551234', // US local format
+    '+447911123456', // UK number
+    '+33612345678', // French number
+  ];
+
+  it.each(E164_FORMATS)(
+    'code stored under %s in devStore matches the challenge hash — verify succeeds',
+    async (phone) => {
+      const challenges = new Map<string, ReturnType<typeof makeChallenge>>();
+      const { service, store } = makeOtpService(challenges);
+
+      // Request OTP — this creates the challenge in "DB" and stores code in devStore
+      const { challengeId } = await service.requestOtp(phone);
+
+      // The devStore must have a code for that exact phone key
+      const storedCode = store.get(phone);
+      expect(storedCode).not.toBeNull();
+      expect(typeof storedCode).toBe('string');
+      expect(storedCode).toMatch(/^\d{6}$/);
+
+      // The challenge must exist and its hash must match the stored code
+      const challenge = challenges.get(challengeId);
+      expect(challenge).toBeDefined();
+      expect(challenge!.phone).toBe(phone);
+
+      // Verifying with the challengeId from requestOtp and the code from devStore
+      // must succeed — no normalization mismatch, no off-by-one.
+      const result = await service.verifyOtp(challengeId, storedCode!);
+      expect(result).toEqual({ phone });
+    },
+  );
+
+  it('second requestOtp for same phone overwrites devStore; old challengeId rejects new code', async () => {
+    const phone = '+2348023456789';
+    const challenges = new Map<string, ReturnType<typeof makeChallenge>>();
+    const { service, store } = makeOtpService(challenges);
+
+    // First request
+    const { challengeId: id1 } = await service.requestOtp(phone);
+    const code1 = store.get(phone)!;
+
+    // Second request — devStore is now overwritten with code2
+    const { challengeId: id2 } = await service.requestOtp(phone);
+    const code2 = store.get(phone)!;
+
+    expect(code2).not.toBe(code1); // highly likely; both random
+
+    // Using id1 with code2 (the Bug B scenario: stale challengeId + current devStore code)
+    // must FAIL — this is the regression guard for the mobile stale-challengeId bug.
+    await expect(service.verifyOtp(id1, code2)).rejects.toThrow(UnauthorizedException);
+
+    // Using id2 with code2 (the correct pair) must SUCCEED.
+    const result = await service.verifyOtp(id2, code2);
+    expect(result).toEqual({ phone });
+  });
+});
+
+// ── 4. Attempt limit: locked challenge cannot be unlocked ────────────────────
 
 describe('OtpService — max-attempt lockout', () => {
   it(`rejects after ${OTP_MAX_ATTEMPTS} wrong attempts and cannot be used again`, async () => {

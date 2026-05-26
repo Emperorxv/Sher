@@ -17,7 +17,7 @@ const CODE_LENGTH = 6;
 
 export default function VerifyScreen() {
   const router = useRouter();
-  const { phone, challengeId: initialChallengeId } = useLocalSearchParams<{
+  const { phone, challengeId: paramChallengeId } = useLocalSearchParams<{
     phone: string;
     challengeId: string;
   }>();
@@ -25,7 +25,7 @@ export default function VerifyScreen() {
   const requestOtp = useAuthStore((s) => s.requestOtp);
 
   // challengeId can change if the user resends the OTP.
-  const [challengeId, setChallengeId] = useState(initialChallengeId ?? '');
+  const [challengeId, setChallengeId] = useState(paramChallengeId ?? '');
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,22 @@ export default function VerifyScreen() {
   // Synchronous guard: auto-submit on 6th digit and manual Verify button can
   // both call handleVerify in the same JS tick before loading state updates.
   const isVerifyingRef = useRef(false);
+
+  // Track the previous param value so we can detect when expo-router updates
+  // params on this screen instance in-place (instead of pushing a new screen).
+  // This happens when a second requestOtp fires while the first navigation is
+  // still animating in — the stack deduplicates the push and mutates params on
+  // the existing instance.  Without this sync, useState would hold the stale
+  // challengeId and verifyOtp would send the wrong one.
+  const prevParamChallengeIdRef = useRef(paramChallengeId);
+  useEffect(() => {
+    if (!paramChallengeId || paramChallengeId === prevParamChallengeIdRef.current) return;
+    prevParamChallengeIdRef.current = paramChallengeId;
+    setChallengeId(paramChallengeId);
+    setCode('');
+    setError(null);
+    isVerifyingRef.current = false;
+  }, [paramChallengeId]);
 
   useEffect(() => {
     inputRef.current?.focus();

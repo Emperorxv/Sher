@@ -33,14 +33,24 @@ export default function PhoneScreen() {
     isSubmittingRef.current = true;
     setError(null);
     setLoading(true);
+    let navigated = false;
     try {
       const { challengeId } = await requestOtp(trimmed);
+      navigated = true;
       router.push({ pathname: '/(auth)/verify', params: { phone: trimmed, challengeId } });
     } catch {
       setError("Couldn't send the code. Check your number and try again.");
     } finally {
       setLoading(false);
-      isSubmittingRef.current = false;
+      // Only re-enable the guard after an error (to allow retry).  After a
+      // successful navigation we leave it true so a second submit cannot fire
+      // before the transition completes — a second call would create a new
+      // challenge, overwriting the dev-store code, while the verify screen
+      // still holds the first challengeId.
+      // The guard resets naturally when the user edits the phone field.
+      if (!navigated) {
+        isSubmittingRef.current = false;
+      }
     }
   }
 
@@ -57,7 +67,12 @@ export default function PhoneScreen() {
           <TextInput
             style={[styles.input, error ? styles.inputError : null]}
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(v) => {
+              setPhone(v);
+              // Re-enable the submit guard when the user edits the number so
+              // they can retry after navigating back from the verify screen.
+              isSubmittingRef.current = false;
+            }}
             placeholder="+234 800 000 0000"
             placeholderTextColor={colors.fog}
             keyboardType="phone-pad"
