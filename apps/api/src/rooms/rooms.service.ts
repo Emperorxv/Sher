@@ -168,7 +168,9 @@ export class RoomsService {
       where: { userId, leftAt: null },
       include: {
         room: {
-          include: { _count: { select: { memberships: true, photos: true } } },
+          include: {
+            _count: { select: { memberships: { where: { leftAt: null } }, photos: true } },
+          },
         },
       },
       orderBy: { room: { createdAt: 'desc' } },
@@ -184,7 +186,7 @@ export class RoomsService {
   async getRoom(roomId: string, callerId: string): Promise<RoomDto> {
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
-      include: { _count: { select: { memberships: true, photos: true } } },
+      include: { _count: { select: { memberships: { where: { leftAt: null } }, photos: true } } },
     });
     if (!room) throw new NotFoundException('ROOM_NOT_FOUND');
     await this.requireMembership(roomId, callerId);
@@ -209,7 +211,7 @@ export class RoomsService {
         ...(patch.name !== undefined && { name: patch.name }),
         ...(patch.endsAt !== undefined && { endsAt: patch.endsAt }),
       },
-      include: { _count: { select: { memberships: true, photos: true } } },
+      include: { _count: { select: { memberships: { where: { leftAt: null } }, photos: true } } },
     });
     return this.toRoomDto(updated, callerId);
   }
@@ -274,9 +276,8 @@ export class RoomsService {
     });
     if (photoCount > 0) throw new ForbiddenException('MEMBER_HAS_PHOTOS');
 
-    await this.prisma.membership.update({
+    await this.prisma.membership.delete({
       where: { id: target.id },
-      data: { leftAt: new Date() },
     });
 
     this.gateway.emitMemberLeft(roomId, { userId: targetUserId });
@@ -293,7 +294,7 @@ export class RoomsService {
     const updated = await this.prisma.room.update({
       where: { id: roomId },
       data: { status: RoomStatus.ENDED, endedAt: new Date() },
-      include: { _count: { select: { memberships: true, photos: true } } },
+      include: { _count: { select: { memberships: { where: { leftAt: null } }, photos: true } } },
     });
 
     this.gateway.emitRoomEnded(roomId);
@@ -362,7 +363,7 @@ export class RoomsService {
     if (!counts) {
       const withCount = await this.prisma.room.findUniqueOrThrow({
         where: { id: room.id },
-        include: { _count: { select: { memberships: true, photos: true } } },
+        include: { _count: { select: { memberships: { where: { leftAt: null } }, photos: true } } },
       });
       counts = withCount._count;
     }
@@ -392,7 +393,9 @@ export class RoomsService {
       this.prisma.room
         .findUniqueOrThrow({
           where: { id: room.id },
-          include: { _count: { select: { memberships: true, photos: true } } },
+          include: {
+            _count: { select: { memberships: { where: { leftAt: null } }, photos: true } },
+          },
         })
         .then((r) => r._count),
       this.prisma.membership.findUnique({

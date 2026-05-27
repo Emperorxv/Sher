@@ -243,6 +243,14 @@ function makeMockPrisma() {
             return Promise.resolve(memberships[idx] ?? null);
           },
         ),
+      delete: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const idx = memberships.findIndex((m) => m.id === where.id);
+        if (idx >= 0) {
+          const [deleted] = memberships.splice(idx, 1);
+          return Promise.resolve(deleted);
+        }
+        return Promise.resolve(null);
+      }),
     },
     photo: {
       count: jest.fn().mockResolvedValue(0),
