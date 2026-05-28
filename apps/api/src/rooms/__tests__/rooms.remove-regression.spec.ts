@@ -259,6 +259,30 @@ function makePrismaStub() {
     $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         membership: {
+          /** Purge soft-deleted (zombie) rows — mirrors the real deleteMany fix. */
+          deleteMany: jest
+            .fn()
+            .mockImplementation(
+              ({
+                where,
+              }: {
+                where: { roomId?: string; userId?: string; leftAt?: { not: null } };
+              }) => {
+                const before = mems.length;
+                for (let i = mems.length - 1; i >= 0; i--) {
+                  const m = mems[i];
+                  if (
+                    m &&
+                    (!where.roomId || m.roomId === where.roomId) &&
+                    (!where.userId || m.userId === where.userId) &&
+                    m.leftAt !== null
+                  ) {
+                    mems.splice(i, 1);
+                  }
+                }
+                return Promise.resolve({ count: before - mems.length });
+              },
+            ),
           count: jest
             .fn()
             .mockImplementation(({ where }: { where: Record<string, unknown> }) =>
@@ -370,7 +394,7 @@ describe('RoomsService — remove-member regressions', () => {
      *   findUnique returns null → no conflict → createMembership succeeds.
      *   Test expects resolve → passes.
      */
-    it('guest can rejoin after host removes them', async () => {
+    it('guest can rejoin after host removes them (hard-delete path)', async () => {
       // Host removes the guest
       await service.removeMember(ROOM.id, HOST.id, GUEST.id);
 
@@ -383,6 +407,35 @@ describe('RoomsService — remove-member regressions', () => {
       });
 
       expect(mockGateway.emitMemberJoined).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * FAILING BEFORE FIX (legacy zombie scenario)
+     *   A soft-deleted row (leftAt set) pre-exists in the DB — the old code path.
+     *   joinRoom calls findUnique → finds the zombie → if (existing) throws ALREADY_MEMBER.
+     *   createMembership also fails via P2002 (@@unique([roomId, userId]) blocks INSERT).
+     *
+     * PASSING AFTER FIX
+     *   1. joinRoom: if (existing && !existing.leftAt) — zombie has leftAt set → not blocked.
+     *   2. createMembership: deleteMany purges the zombie inside the transaction → INSERT succeeds.
+     */
+    it('guest with a pre-existing soft-deleted (zombie) row can still join', async () => {
+      // Simulate legacy data: directly set leftAt on the guest membership
+      // (as if the old soft-delete code had run before the hard-delete fix was deployed).
+      const guestMem = prismaStub._mems.find((m) => m.userId === GUEST.id);
+      expect(guestMem).toBeDefined();
+      guestMem!.leftAt = new Date('2026-05-01T00:00:00Z'); // zombie: soft-deleted row
+
+      // joinRoom must succeed — zombie must not block the rejoin.
+      await expect(service.joinRoom(GUEST, { joinCode: ROOM.joinCode })).resolves.toMatchObject({
+        membership: expect.objectContaining({ userId: GUEST.id }),
+      });
+
+      // Exactly one active membership for the guest.
+      const activeCount = prismaStub._mems.filter(
+        (m) => m.userId === GUEST.id && m.leftAt === null,
+      ).length;
+      expect(activeCount).toBe(1);
     });
   });
 });

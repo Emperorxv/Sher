@@ -113,11 +113,12 @@ export class RoomsService {
       throw new ForbiddenException('ROOM_NOT_ACTIVE');
     }
 
-    // Prevent double-join.
+    // Prevent double-join. Filter leftAt: null — a soft-deleted (zombie) row
+    // must not block a legitimate rejoin after host-remove or self-leave.
     const existing = await this.prisma.membership.findUnique({
       where: { roomId_userId: { roomId: room.id, userId: user.id } },
     });
-    if (existing) throw new ConflictException('ALREADY_MEMBER');
+    if (existing && !existing.leftAt) throw new ConflictException('ALREADY_MEMBER');
 
     const membership = await this.memberships.createMembership(room.id, user.id, 'GUEST');
     const willNeedMemberUnlock = membership.joinOrder > room.baseCapacity;

@@ -259,6 +259,31 @@ function makeMockPrisma() {
       // Use the same mocks for the transaction
       return fn({
         membership: {
+          /** Purge soft-deleted zombie rows — no-op in this suite (no legacy data). */
+          deleteMany: jest
+            .fn()
+            .mockImplementation(
+              ({
+                where,
+              }: {
+                where: { roomId?: string; userId?: string; leftAt?: { not: null } };
+              }) => {
+                let removed = 0;
+                for (let i = memberships.length - 1; i >= 0; i--) {
+                  const m = memberships[i];
+                  if (
+                    m &&
+                    (!where.roomId || m.roomId === where.roomId) &&
+                    (!where.userId || m.userId === where.userId) &&
+                    m.leftAt !== null
+                  ) {
+                    memberships.splice(i, 1);
+                    removed++;
+                  }
+                }
+                return Promise.resolve({ count: removed });
+              },
+            ),
           count: jest
             .fn()
             .mockImplementation(({ where }: { where: { roomId?: string } }) =>

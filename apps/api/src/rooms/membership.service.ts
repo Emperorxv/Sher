@@ -13,7 +13,14 @@ export class MembershipService {
    */
   async createMembership(roomId: string, userId: string, role: Role) {
     return this.prisma.$transaction(async (tx) => {
-      // Count current members to derive the next joinOrder.
+      // Remove any soft-deleted (zombie) row for this [roomId, userId] pair.
+      // Legacy code soft-deleted memberships (set leftAt) rather than hard-deleting;
+      // those rows survive the code fix and block re-creation via @@unique([roomId, userId]).
+      await tx.membership.deleteMany({
+        where: { roomId, userId, leftAt: { not: null } },
+      });
+
+      // Count current active members to derive the next joinOrder.
       const count = await tx.membership.count({ where: { roomId, leftAt: null } });
       const joinOrder = count + 1;
 
