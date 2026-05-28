@@ -23,3 +23,15 @@ export type {
   PricePairDto,
   PaginatedDto,
 } from './rooms';
+
+export type {
+  PaymentProvider,
+  PaymentStatus,
+  PaymentPurpose,
+  InitiateUnlockBodyDto,
+  RetentionExtendBodyDto,
+  PaymentInitDto,
+  AmountDueDto,
+  UnlockStatusDto,
+  PaymentHistoryItemDto,
+} from './payments';
