@@ -933,7 +933,200 @@ For each photo:
 
 ---
 
-## 12. Push Notifications
+## 12. Camera & AR Filters (Snap Camera Kit)
+
+### 12.1 Scope
+
+Sher exposes a "Filters" mode on the capture screen. Tapping it switches the
+camera surface from the baseline pipeline (§ Phase 6, Vision Camera) to a
+Camera Kit session that renders Snap AR Lenses in real time. Users browse a
+lens carousel, apply a lens, capture a still, and the rendered image flows
+through Sher's existing R2 upload pipeline into the room gallery exactly like
+any other photo. Filters mode is opt-in per capture; the baseline camera
+remains the default.
+
+### 12.2 Vendor, Cost, and Why
+
+Snap Camera Kit. Selected because it is the only mature AR camera SDK with
+(a) zero per-user / per-interaction / per-platform fees on its standard tier,
+(b) an officially Snap-maintained React Native wrapper, and (c) an existing
+community Expo config plugin. All other evaluated vendors (Banuba, DeepAR,
+BytePlus, FaceUnity) charge per-platform license fees or MAU-based pricing
+and are excluded by the free-only constraint.
+
+Cost surface for Sher under this design:
+
+- Camera Kit SDK: **free**.
+- `@snap/camera-kit-react-native`: **free** (MIT-licensed wrapper around the
+  Camera Kit Terms-bound native SDK).
+- `expo-snapchat-camera-kit` config plugin: **free** (community OSS).
+- Lenses: Sher consumes **stock public lenses** from Snap's public lens
+  library for MVP — free. Custom branded lenses (built in-house with the
+  free Lens Studio desktop tool) are a post-MVP option and remain free.
+  Snap's Creator Marketplace (paid) is explicitly **not** in scope.
+- Binary impact: ~12 MB iOS, comparable Android. Acceptable.
+
+### 12.3 Dependencies
+
+```jsonc
+// apps/mobile/package.json — added in Phase 6.5
+{
+  "dependencies": {
+    "@snap/camera-kit-react-native": "^0.6.0",
+    "expo-snapchat-camera-kit": "latest",
+  },
+}
+```
+
+The community Expo config plugin is the integration path of least resistance.
+If it falls behind Expo SDK or Camera Kit upstream during Phase 6.5, the
+fallback is a hand-rolled Expo config plugin in `apps/mobile/plugins/` that
+performs the same `Podfile` / `build.gradle` mutations the upstream plugin
+documents. No paid alternative is required at any point.
+
+### 12.4 Integration Mode: Headless + Custom UI
+
+Camera Kit ships with optional "Reference UI" components (Snap-styled lens
+carousel, capture button, etc). Sher does **not** use Reference UI — it
+introduces Snap brand surfaces (including gradient and non-Roboto type) that
+collide with § 7.5. Instead, Sher uses Camera Kit's **headless** mode: the
+RN wrapper exposes the session, lens repository, and rendered preview as
+primitives, and Sher builds its own lens carousel, capture button, and
+filter-mode chrome using the existing brand system (Roboto, solid saturated
+fills, no gradients — the ESLint rule continues to apply inside the filter
+UI directory).
+
+### 12.5 Filter Application Model: Capture-time
+
+The lens is baked into the captured image at capture time. The shared
+gallery and downstream room members see the filtered image; there is no
+"original" preserved server-side.
+
+Rationale:
+
+- Matches user mental model ("I took a filtered photo").
+- Zero changes to the photo upload pipeline, R2 storage, gallery, real-time
+  emission, or the 30-day retention rules in § 9.
+- No need to ship the lens runtime to viewing clients (lenses render only
+  on the capture device).
+- Avoids storage doubling and a re-rendering pipeline that would cost
+  compute and complexity for no MVP user-visible benefit.
+
+The alternative — store originals + lens metadata, render at view-time —
+remains documented here as a known option but is **not** built. Revisit
+only if a future product requirement (e.g. "remove filter" undo) forces it.
+
+### 12.6 Lens Strategy
+
+MVP (Phase 6.5): stock public lenses sourced via the Camera Kit Portal lens
+group mechanism. A single `SNAP_LENS_GROUP_ID` env var points at a curated
+group of public lenses; Snap returns the lens list at runtime via the SDK's
+lens repository. Curation happens in the portal, not in code, so adding or
+removing lenses requires no app release.
+
+Post-MVP (out of scope here; tracked in § 21 backlog): custom
+Sher-branded event lenses authored in **Lens Studio** (free Snap desktop
+tool) — e.g. a "Wedding" lens, "Birthday" lens, "Conference" lens. These
+become a potential premium / paid feature, monetized through the same
+payment rails specified in § 9 (host purchases lens pack for a room).
+Building lenses in-house keeps this free; Creator Marketplace remains
+excluded.
+
+### 12.7 Capture Flow
+
+```
+User taps Filters → Sher switches camera surface to Camera Kit Session
+  → lens carousel loads from lensRepository (group ID from env)
+  → user selects lens → session.applyLens(lens)
+  → user taps capture
+  → Camera Kit returns rendered still (JPEG/PNG buffer)
+  → buffer enters existing PhotoUploadService (Phase 6 pipeline)
+  → R2 upload, Photo row insert, room:photo Socket.IO emit, gallery update
+```
+
+No new server endpoints required for the capture itself. Photos uploaded
+with a lens applied carry an optional `snapLensId` field (§ 12.8) so the
+backend can log lens usage; this is the only API surface change.
+
+### 12.8 Schema Change
+
+Single additive column on `Photo`, optional, nullable, no backfill:
+
+```prisma
+// prisma/schema.prisma — Phase 6.5 migration
+model Photo {
+  // ...existing fields...
+  snapLensId      String?   // null = no lens applied; non-null = Camera Kit lens UUID
+  snapLensGroupId String?   // denormalised for analytics; matches env at capture time
+}
+```
+
+Indexed only if analytics queries need it; default unindexed. The lens ID
+is informational — Sher never re-renders from it.
+
+### 12.9 Secrets & Configuration
+
+Three secrets, added to the env schema (`apps/api/src/config/env.ts` and
+`apps/mobile/src/config/env.ts`) and loaded the same way as Paystack /
+Flutterwave keys in § 9. Never committed.
+
+```
+SNAP_KIT_APP_ID          # public-ish, but treated as secret for hygiene
+SNAP_API_TOKEN           # required by Camera Kit bootstrap
+SNAP_LENS_GROUP_ID       # group containing the curated public lenses
+```
+
+Mobile receives the API token at build time via Expo's env mechanism; it is
+not fetched from Sher's API. Rotating it requires a mobile release. This is
+acceptable for MVP.
+
+### 12.10 Approval & ToS Gates (blocking, not technical)
+
+Two hard gates, both must be cleared before Phase 6.5 implementation begins:
+
+1. **Snap Developer Portal approval.** Sher applies for Camera Kit access at
+   `developers.snap.com`. Approval is at Snap's discretion and not instant.
+   This application is started in parallel with Phase 5 so the clock runs
+   while other work proceeds.
+2. **Camera Kit Terms review.** The Camera Kit Terms govern what Sher may do
+   with lens-modified output. The terms must be reviewed against Sher's
+   specific use case (storing rendered images on R2, sharing inside private
+   rooms, allowing downloads per § 9) and a written decision recorded in
+   `docs/legal/snap-camera-kit-tos-review.md` before any user-facing
+   filter feature ships. This is a legal review, not an engineering task.
+
+Both gates are checklist items in § 21.
+
+### 12.11 Failure Modes & Graceful Degradation
+
+- **No approval yet / token missing**: Filters button hidden via remote
+  feature flag. Baseline camera remains the only path. Zero user impact.
+- **Snap services unreachable** (lens load fails): Filters mode shows a
+  branded empty-state ("Filters unavailable, try again"), capture button
+  disabled in filter mode. Baseline camera remains available.
+- **Lens runtime error during capture**: Camera Kit session is torn down,
+  user dropped back to baseline camera with a non-blocking toast. Photo is
+  not lost — the un-filtered baseline frame is captured instead. Error
+  surfaced through the structured error-code system established in Phase 4
+  (`CAMERA_KIT_RUNTIME_FAILURE`), mapped distinctly in the mobile error
+  handler per the error-mapping rule.
+- **Wrapper or config-plugin breakage on Expo upgrade**: documented
+  fallback is the in-tree hand-rolled config plugin (§ 12.3).
+
+### 12.12 Open Decisions (resolved or deferred)
+
+| Decision                                                                | Status                                  | Recorded     |
+| ----------------------------------------------------------------------- | --------------------------------------- | ------------ |
+| Capture-time vs post-effect                                             | Resolved → capture-time                 | § 12.5       |
+| Stock vs custom lenses for MVP                                          | Resolved → stock                        | § 12.6       |
+| Reference UI vs headless                                                | Resolved → headless                     | § 12.4       |
+| Custom branded lenses as paid feature                                   | Deferred to post-MVP                    | § 12.6, § 21 |
+| Per-room lens curation (different lens groups for different room types) | Deferred                                | § 12.6       |
+| Video capture with lenses                                               | Out of scope for Sher MVP (photos only) | —            |
+
+---
+
+## 13. Push Notifications
 
 ### Triggers
 
@@ -954,7 +1147,7 @@ For each photo:
 
 ---
 
-## 13. Lifecycle & Retention
+## 14. Lifecycle & Retention
 
 ### State machine for Room
 
@@ -999,7 +1192,7 @@ Notes:
 
 ---
 
-## 14. Security
+## 15. Security
 
 ### Threat model (top risks → mitigation)
 
@@ -1044,7 +1237,7 @@ Notes:
 
 ---
 
-## 15. Testing Strategy
+## 16. Testing Strategy
 
 ### Pyramid
 
@@ -1112,7 +1305,7 @@ A PR cannot merge if:
 
 ---
 
-## 16. Observability
+## 17. Observability
 
 ### Logging
 
@@ -1155,7 +1348,7 @@ Each alert links to a markdown runbook in `docs/runbooks/`. Sample runbooks to c
 
 ---
 
-## 17. Infrastructure & DevOps
+## 18. Infrastructure & DevOps
 
 ### Environments
 
@@ -1229,7 +1422,7 @@ Stored in Doppler or AWS Secrets Manager, injected at task start. Categories:
 
 ---
 
-## 18. Cost Estimate (rough, monthly, USD, MVP scale ~ 1,000 rooms/month)
+## 19. Cost Estimate (rough, monthly, USD, MVP scale ~ 1,000 rooms/month)
 
 | Item                                       | Est.            |
 | ------------------------------------------ | --------------- |
@@ -1251,7 +1444,7 @@ Scaling to 10× volume primarily increases SMS, storage, and compute roughly lin
 
 ---
 
-## 19. Decisions Log
+## 20. Decisions Log
 
 ### Resolved (locked in v2.0)
 
@@ -1276,7 +1469,7 @@ Scaling to 10× volume primarily increases SMS, storage, and compute roughly lin
 
 ---
 
-## 20. Build Plan — Claude Code Phases
+## 21. Build Plan — Claude Code Phases
 
 Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, acceptance criteria, and "definition of done." Do not move on until the previous phase passes its checks.
 
@@ -1398,6 +1591,56 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Tests: queue resumes after kill, retry exhausts gracefully, MIME spoof rejected, oversize rejected, plan cap enforced.
   **Done when:** Two devices capture simultaneously; both see each other's photos within seconds; killing the app mid-upload resumes on relaunch.
 
+### Phase 6.5 — Snap Camera Kit Integration
+
+Depends on: Phase 6 complete (baseline camera + dev-build transition); Snap
+Camera Kit approval granted; Camera Kit ToS review filed (§ 12.10).
+
+Scope:
+
+1. Snap Developer Portal application filed (parallel with Phase 5; not
+   blocking other work until Phase 6.5 begins).
+2. ToS review document committed to `docs/legal/`.
+3. `@snap/camera-kit-react-native` and `expo-snapchat-camera-kit` installed;
+   `expo prebuild --clean` run; iOS + Android dev builds verified booting.
+4. Env schema extended with `SNAP_KIT_APP_ID`, `SNAP_API_TOKEN`,
+   `SNAP_LENS_GROUP_ID`.
+5. Prisma migration: `Photo.snapLensId`, `Photo.snapLensGroupId` (nullable).
+6. Camera Kit session bootstrap in `apps/mobile/src/camera/snap/` —
+   headless mode only, no Reference UI.
+7. Custom lens carousel + filter-mode chrome built against the brand system
+   (Roboto, solid colors, no gradients — ESLint rule enforced).
+8. Filters button on capture screen behind a remote feature flag (off in
+   prod until end-to-end verified).
+9. Captured image routes through existing PhotoUploadService; `snapLensId`
+   set when capture happened in filter mode.
+10. Failure modes (§ 12.11) all wired with structured error codes and
+    distinct mobile error mapping.
+
+Done-when:
+
+- Snap approval granted; token & group ID present in dev env.
+- ToS review document committed and acknowledged.
+- Real-DB integration test: photo with `snapLensId` round-trips through
+  upload, retrieval, and room emission.
+- Contract test: any endpoint touched (e.g. photo create accepting the new
+  field) has exact-JSON mobile↔API coverage.
+- Manual sim verification (Daniel): filter mode toggles, lens carousel
+  loads, capture produces a filtered image visible in the gallery on a
+  second simulator, `snapLensId` recorded in DB.
+- Failure-mode manual checks: app behaves correctly with token unset,
+  network offline mid-session, and an intentionally invalid lens group ID.
+- No gradients introduced; ESLint clean.
+- All Camera Kit code uses the headless API; no Reference UI imports.
+
+Out of scope (tracked in backlog, post-MVP):
+
+- Custom Sher-branded lenses authored in Lens Studio.
+- Lens pack as a paid premium feature (would integrate with § 9 payment
+  rails when built).
+- Per-room lens curation.
+- Video capture with lenses.
+
 ### Phase 7 — Engagement & Downloads
 
 **Goal:** Likes, individual + bulk download, photo deletion.
@@ -1414,7 +1657,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - BullMQ repeatables for `room.tick` (advances ACTIVE→ENDED at `endsAt`), `retention.notify`, `retention.purge`, `payment.reconcile`, `auth.cleanup`, `device.prune`.
 - Retention extension flow (any unlocked member can pay → new RetentionWindow → recompute `Room.retentionUntil`, capped at 365 days post-event).
 - LOCKED members can still pay MEMBER_UNLOCK retroactively any time before `retentionUntil` — verify they retroactively gain access and the gallery query returns photos for them.
-- Push triggers per §12: room ending soon, photos expiring T-7d/T-1d, payment success/failure, "new photos" digest.
+- Push triggers per §13: room ending soon, photos expiring T-7d/T-1d, payment success/failure, "new photos" digest.
 - Tests with time-traveled clock (`@sinonjs/fake-timers`):
   - Create room → end it → 30 days pass with no unlocks → photos purged.
   - Create room → end it → host pays BASE_UNLOCK → 15 days later extra pays MEMBER_UNLOCK → both still have access.
@@ -1437,7 +1680,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Grafana dashboards committed as JSON.
 - Alert rules in code.
 - Runbooks written.
-- Load test passes SLOs from §15.
+- Load test passes SLOs from §16.
   **Done when:** Synthetic load of 500 concurrent uploads stays within SLOs and dashboards show meaningful data.
 
 ### Phase 11 — Release Engineering
@@ -1458,7 +1701,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 
 ---
 
-## 21. Working Agreements (read before prompting Claude Code)
+## 22. Working Agreements (read before prompting Claude Code)
 
 - **One concern per PR.** Even when prompting Claude Code, instruct it to keep diffs focused.
 - **Tests written with the code, not after.** Reject any phase output that adds features without tests.
@@ -1471,7 +1714,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 
 ---
 
-## 22. Glossary (so Claude Code uses your terms consistently)
+## 23. Glossary (so Claude Code uses your terms consistently)
 
 - **Room** — the event-bound photo collection. NOT "album", NOT "event" in code.
 - **Member** — any user in a Room. **Host** is the creator. **Co-host** has host privileges except deletion.
@@ -1486,7 +1729,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 
 ---
 
-## 23. Changelog
+## 24. Changelog
 
 **v2.1 — Email required at signup**
 
@@ -1498,8 +1741,8 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Added `/auth/email/verify` and `/auth/email/resend` endpoints to §6.
 - `POST /auth/otp/verify` response now includes `isNewUser: boolean`.
 - `PATCH /me` now accepts `email` and `marketingConsent` fields.
-- §14 SIM-swap mitigation updated: device binding now always uses email (always present post-signup).
-- §19 "Email at signup" moved from open to resolved.
+- §15 SIM-swap mitigation updated: device binding now always uses email (always present post-signup).
+- §20 "Email at signup" moved from open to resolved.
 
 **v2.0 — Brand & business model finalized**
 
@@ -1511,7 +1754,7 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Updated `Payment` model: `amountMinor` + `currency`, added `membershipId` for `MEMBER_UNLOCK` targeting.
 - Rewrote §9 Payment Integration end-to-end for the new model + multi-currency.
 - Added §7.5 Brand Identity & Design System (full saturated colors, no gradients).
-- Rewrote Phase 5 in §20 to match the new payment flow.
+- Rewrote Phase 5 in §21 to match the new payment flow.
 - Updated Phase 3 to require the design system + a contrast audit page.
 - Updated Phase 8 to test retroactive `MEMBER_UNLOCK`.
 

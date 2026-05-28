@@ -8,7 +8,7 @@ The complete technical specification is at **`docs/architecture.md`**. **Read it
 
 ## How we work together
 
-- We build this app **one phase at a time** as defined in §20 of the architecture doc.
+- We build this app **one phase at a time** as defined in §21 of the architecture doc.
 - Do **not** skip ahead to a later phase. Do **not** mix work from multiple phases in a single change.
 - Each phase has explicit "Done when" criteria. We do not move on until those pass.
 - When you are unsure about a decision the doc doesn't cover, **stop and ask**. Do not guess.
