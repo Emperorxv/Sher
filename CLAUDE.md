@@ -91,3 +91,7 @@ When the user says "start Phase N", do the following:
 - If a library API has changed and the doc is out of date, point it out — don't silently work around it.
 
 - **Do not push to the GitHub remote.** Commit locally only. I push from my own terminal after reviewing each deliverable.
+
+## Reporting discipline (rule 4)
+
+**Rule 4: Workspace-wide test rule.** Before reporting any commit done, run `pnpm test` from the repository root, not just `pnpm --filter=<workspace> test`. CI green is part of "done" — a commit is not complete until the workflow it triggers passes. If CI is red, do not begin the next commit; fix the failure first.

@@ -81,6 +81,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { subscribeToRoom } from '../../lib/socket';
 import type { RoomSocketEvents } from '../../lib/socket';
 
+// CI runners are 5–10× slower than local hardware. Every test in this file
+// awaits a socket-subscription handshake; 15 s is 3× the worst observed local
+// runtime and covers the slowest CI runners.
+// TODO(tech-debt): replace async timing with jest.useFakeTimers() so the
+// handshake is synchronous and this timeout can revert to the default 5 s.
+// Tracked in docs/tech-debt.md.
+jest.setTimeout(15000);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ROOM_ID = 'room-test-1';
