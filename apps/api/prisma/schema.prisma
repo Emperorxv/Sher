@@ -102,7 +102,9 @@ model Room {
   endsAt               DateTime // capture window closes here
   endedAt              DateTime? // when status actually became ENDED (paywall engages)
   baseUnlockedAt       DateTime? // when host successfully paid BASE_UNLOCK
-  baseUnlockPaymentId  String? // FK to Payment that unlocked the base members
+  // Bare String? — no @relation. See architecture.md §12 payment rationale.
+  // If Payment deletion is ever added, revisit and add @relation with onDelete: SetNull.
+  baseUnlockPaymentId  String?
   retentionUntil       DateTime // photos auto-delete after this
   coverPhotoId         String?
   pricingCurrency      String     @default("NGN") // currency captured at room creation
@@ -126,7 +128,9 @@ model Membership {
   joinOrder       Int // 1, 2, 3, … determines if EXEMPT (≤baseCapacity) or needs MEMBER_UNLOCK
   unlockState     UnlockState @default(LOCKED)
   unlockedAt      DateTime? // when this membership gained gallery access
-  unlockPaymentId String? // FK to MEMBER_UNLOCK Payment (null for EXEMPT)
+  // Bare String? — no @relation. See architecture.md §12 payment rationale.
+  // If Payment deletion is ever added, revisit and add @relation with onDelete: SetNull.
+  unlockPaymentId String?
   joinedAt        DateTime    @default(now())
   leftAt          DateTime?
   room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)

@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { PricingModule } from './pricing/pricing.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { PaymentsModule } from './payments/payments.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { UsersModule } from './users/users.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -40,6 +41,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     UsersModule,
     PricingModule,
     RoomsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule implements NestModule {
