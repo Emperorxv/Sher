@@ -82,9 +82,33 @@ afterEach(() => {
 // ── Constructor ───────────────────────────────────────────────────────────────
 
 describe('constructor', () => {
-  it('throws if PAYSTACK_SECRET_KEY is missing', () => {
+  it('does not throw when PAYSTACK_SECRET_KEY is absent', () => {
     delete process.env['PAYSTACK_SECRET_KEY'];
-    expect(() => new PaystackClient()).toThrow('PAYSTACK_SECRET_KEY is not set');
+    expect(() => new PaystackClient()).not.toThrow();
+  });
+});
+
+// ── key-absent guard ──────────────────────────────────────────────────────────
+
+describe('when PAYSTACK_SECRET_KEY is unset', () => {
+  it('initiate() throws PAYSTACK_UNAVAILABLE', async () => {
+    delete process.env['PAYSTACK_SECRET_KEY'];
+    const keylessClient = new PaystackClient();
+    const err = await keylessClient.initiate(INIT_INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(
+      ((err as ServiceUnavailableException).getResponse() as Record<string, string>)['code'],
+    ).toBe('PAYSTACK_UNAVAILABLE');
+  });
+
+  it('verify() throws PAYSTACK_UNAVAILABLE', async () => {
+    delete process.env['PAYSTACK_SECRET_KEY'];
+    const keylessClient = new PaystackClient();
+    const err = await keylessClient.verify('ref123').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(
+      ((err as ServiceUnavailableException).getResponse() as Record<string, string>)['code'],
+    ).toBe('PAYSTACK_UNAVAILABLE');
   });
 });
 

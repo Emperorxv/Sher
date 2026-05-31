@@ -95,3 +95,7 @@ When the user says "start Phase N", do the following:
 ## Reporting discipline (rule 4)
 
 **Rule 4: Workspace-wide test rule.** Before reporting any commit done, run `pnpm test` from the repository root, not just `pnpm --filter=<workspace> test`. CI green is part of "done" — a commit is not complete until the workflow it triggers passes. If CI is red, do not begin the next commit; fix the failure first.
+
+## Constructor environment rule (rule 5)
+
+**Rule 5: Lazy env validation.** Provider constructors (and any `@Injectable()` that reads env vars at construction time) must **not** throw on a missing variable. Store the value as `string | null` in the constructor; validate and throw at the first method call that needs the key. This ensures NestJS can instantiate and inject providers in test environments where secrets are absent.

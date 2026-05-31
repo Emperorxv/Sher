@@ -47,15 +47,20 @@ export class PaystackClient implements PaymentProvider {
   readonly name = 'PAYSTACK' as const;
   private readonly logger = new Logger(PaystackClient.name);
   private readonly baseUrl = 'https://api.paystack.co';
-  private readonly secretKey: string;
+  // Null until first use — validated lazily so the constructor never throws
+  // in test environments where PAYSTACK_SECRET_KEY is absent.
+  private readonly secretKey: string | null;
 
   constructor() {
-    const key = process.env['PAYSTACK_SECRET_KEY'];
-    if (!key) throw new Error('PAYSTACK_SECRET_KEY is not set');
-    this.secretKey = key;
+    this.secretKey = process.env['PAYSTACK_SECRET_KEY'] ?? null;
   }
 
   async initiate(input: PaymentInitInput): Promise<PaymentInitResult> {
+    if (!this.secretKey)
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'PAYSTACK_SECRET_KEY is not set.',
+      });
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/transaction/initialize`, {
@@ -107,6 +112,11 @@ export class PaystackClient implements PaymentProvider {
   }
 
   async verify(providerRef: string): Promise<PaymentVerifyResult> {
+    if (!this.secretKey)
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'PAYSTACK_SECRET_KEY is not set.',
+      });
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/transaction/verify/${encodeURIComponent(providerRef)}`, {
