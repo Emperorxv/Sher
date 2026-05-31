@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PaymentsController } from './payments.controller';
+import { UnlocksController } from './unlocks.controller';
 import { PaymentsService } from './payments.service';
 import { PaystackClient } from './providers/paystack.client';
 import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-provider.interface';
@@ -13,7 +14,7 @@ import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-pro
     PricingModule,
     AuthModule, // provides JwtAuthGuard
   ],
-  controllers: [PaymentsController],
+  controllers: [PaymentsController, UnlocksController],
   providers: [
     PaymentsService,
     PaystackClient,

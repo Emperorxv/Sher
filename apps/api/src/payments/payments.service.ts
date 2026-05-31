@@ -17,7 +17,12 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { SupportedCurrency } from '../common/constants/currencies';
-import { PaymentHistoryItemDto, PaymentInitDto } from '@sher/shared-types';
+import {
+  AmountDueDto,
+  PaymentHistoryItemDto,
+  PaymentInitDto,
+  UnlockStatusDto,
+} from '@sher/shared-types';
 import {
   FLUTTERWAVE_PROVIDER,
   PAYSTACK_PROVIDER,
@@ -174,6 +179,68 @@ export class PaymentsService {
       },
       metadata: { roomId, months: input.months, purpose: 'RETENTION_EXTENSION' },
     });
+  }
+
+  // ── Unlock status ─────────────────────────────────────────────────────────
+
+  async getUnlockStatus(roomId: string, callerId: string): Promise<UnlockStatusDto> {
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('ROOM_NOT_FOUND');
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { roomId, userId: callerId, leftAt: null },
+    });
+    if (!membership) throw new NotFoundException('NOT_MEMBER');
+
+    const [pendingBase, pendingMember] = await Promise.all([
+      this.prisma.payment.findFirst({
+        where: { roomId, purpose: PaymentPurpose.BASE_UNLOCK, status: PaymentStatus.PENDING },
+      }),
+      this.prisma.payment.findFirst({
+        where: {
+          membershipId: membership.id,
+          purpose: PaymentPurpose.MEMBER_UNLOCK,
+          status: PaymentStatus.PENDING,
+        },
+      }),
+    ]);
+
+    const callerUnlockState = membership.unlockState as UnlockStatusDto['callerUnlockState'];
+
+    let amountDue: AmountDueDto | null = null;
+    if (callerUnlockState === 'LOCKED') {
+      const isHost = callerId === room.hostId;
+      const isExtraMember = membership.joinOrder > room.baseCapacity;
+      if (isHost) {
+        const quote = this.pricing.quote({
+          currency: room.pricingCurrency as SupportedCurrency,
+          purpose: 'BASE_UNLOCK',
+        });
+        amountDue = {
+          amountMinor: quote.amountMinor,
+          amountDisplay: quote.display,
+          purpose: 'BASE_UNLOCK',
+        };
+      } else if (isExtraMember) {
+        const quote = this.pricing.quote({
+          currency: room.pricingCurrency as SupportedCurrency,
+          purpose: 'MEMBER_UNLOCK',
+        });
+        amountDue = {
+          amountMinor: quote.amountMinor,
+          amountDisplay: quote.display,
+          purpose: 'MEMBER_UNLOCK',
+        };
+      }
+    }
+
+    return {
+      callerUnlockState,
+      baseUnlocked: room.baseUnlockedAt !== null,
+      baseUnlockPending: pendingBase !== null,
+      memberUnlockPending: pendingMember !== null,
+      amountDue,
+    };
   }
 
   // ── Payment history ───────────────────────────────────────────────────────

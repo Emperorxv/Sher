@@ -110,6 +110,7 @@ function makePrisma(
     userFindUnique: unknown;
     paymentCreate: unknown;
     paymentFindMany: unknown;
+    paymentFindFirst: unknown;
   }> = {},
 ) {
   return {
@@ -139,6 +140,9 @@ function makePrisma(
       findMany: jest
         .fn()
         .mockResolvedValue('paymentFindMany' in overrides ? overrides.paymentFindMany : []),
+      findFirst: jest
+        .fn()
+        .mockResolvedValue('paymentFindFirst' in overrides ? overrides.paymentFindFirst : null),
     },
   };
 }
@@ -407,6 +411,75 @@ describe('initiateRetentionExtension()', () => {
         }),
       }),
     );
+  });
+});
+
+// ── getUnlockStatus ───────────────────────────────────────────────────────────
+
+describe('getUnlockStatus()', () => {
+  it('throws ROOM_NOT_FOUND when room does not exist', async () => {
+    const { service } = makeService({ roomFindUnique: null });
+    await expect(service.getUnlockStatus(ROOM_ID, HOST_ID)).rejects.toThrow(NotFoundException);
+  });
+
+  it('throws NOT_MEMBER when caller has no active membership', async () => {
+    const { service } = makeService({ membershipFindFirst: null });
+    await expect(service.getUnlockStatus(ROOM_ID, HOST_ID)).rejects.toThrow(NotFoundException);
+  });
+
+  it('returns amountDue=BASE_UNLOCK when host is LOCKED', async () => {
+    const { service } = makeService({
+      membershipFindFirst: HOST_MEMBERSHIP,
+    });
+    const result = await service.getUnlockStatus(ROOM_ID, HOST_ID);
+    expect(result.callerUnlockState).toBe('LOCKED');
+    expect(result.amountDue).toMatchObject({ purpose: 'BASE_UNLOCK', amountMinor: 150_000 });
+  });
+
+  it('returns amountDue=MEMBER_UNLOCK when extra member is LOCKED', async () => {
+    const { service } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_LOCKED,
+    });
+    const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
+    expect(result.callerUnlockState).toBe('LOCKED');
+    expect(result.amountDue).toMatchObject({ purpose: 'MEMBER_UNLOCK' });
+  });
+
+  it('returns amountDue=null when covered non-host member is LOCKED (waiting for host)', async () => {
+    const { service } = makeService({
+      membershipFindFirst: EXEMPT_MEMBERSHIP, // joinOrder=2, not host
+    });
+    const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
+    expect(result.amountDue).toBeNull();
+  });
+
+  it('returns amountDue=null when caller is UNLOCKED', async () => {
+    const { service } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_UNLOCKED,
+    });
+    const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
+    expect(result.callerUnlockState).toBe('UNLOCKED');
+    expect(result.amountDue).toBeNull();
+  });
+
+  it('reflects baseUnlocked=true when room.baseUnlockedAt is set', async () => {
+    const { service } = makeService({
+      roomFindUnique: ALREADY_UNLOCKED_ROOM,
+      membershipFindFirst: EXTRA_MEMBERSHIP_UNLOCKED,
+    });
+    const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
+    expect(result.baseUnlocked).toBe(true);
+  });
+
+  it('reflects baseUnlockPending=true when a PENDING BASE_UNLOCK payment exists', async () => {
+    const { service, prisma } = makeService({
+      membershipFindFirst: HOST_MEMBERSHIP,
+    });
+    // First findFirst call (BASE_UNLOCK) returns a pending payment; second (MEMBER_UNLOCK) returns null
+    prisma.payment.findFirst.mockResolvedValueOnce(MOCK_PAYMENT).mockResolvedValueOnce(null);
+    const result = await service.getUnlockStatus(ROOM_ID, HOST_ID);
+    expect(result.baseUnlockPending).toBe(true);
+    expect(result.memberUnlockPending).toBe(false);
   });
 });
 
