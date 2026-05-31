@@ -1,4 +1,5 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { of } from 'rxjs';
 import { ResponseEnvelopeInterceptor } from './response-envelope.interceptor';
 
@@ -39,6 +40,21 @@ describe('ResponseEnvelopeInterceptor', () => {
   it('wraps a string in { data }', (done) => {
     interceptor.intercept({} as ExecutionContext, makeNext('hello')).subscribe((result) => {
       expect(result).toEqual({ data: 'hello' });
+      done();
+    });
+  });
+
+  it('skips envelope when SkipResponseEnvelope metadata is set', (done) => {
+    const mockReflector = {
+      getAllAndOverride: jest.fn().mockReturnValue(true),
+    } as unknown as Reflector;
+    const skippingInterceptor = new ResponseEnvelopeInterceptor(mockReflector);
+    const ctx = {
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
+    skippingInterceptor.intercept(ctx, makeNext({ id: '1' })).subscribe((result) => {
+      expect(result).toEqual({ id: '1' });
       done();
     });
   });

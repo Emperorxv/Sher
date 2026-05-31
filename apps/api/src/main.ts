@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import * as Sentry from '@sentry/node';
-import { NestFactory } from '@nestjs/core';
+import express from 'express';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -16,13 +17,17 @@ if (process.env['SENTRY_DSN']) {
 }
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('v1');
 
+  // Webhook routes need raw body for signature verification; must run before JSON parser.
+  app.use('/v1/webhooks', express.raw({ type: 'application/json' }));
+  app.use(express.json());
+
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new ResponseEnvelopeInterceptor());
+  app.useGlobalInterceptors(new ResponseEnvelopeInterceptor(app.get(Reflector)));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
