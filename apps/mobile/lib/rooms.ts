@@ -14,6 +14,7 @@ export const roomKeys = {
   detail: (id: string) => [...roomKeys.all, 'detail', id] as const,
   members: (id: string) => [...roomKeys.all, 'members', id] as const,
   pricing: (id: string) => [...roomKeys.all, 'pricing', id] as const,
+  unlockStatus: (id: string) => [...roomKeys.all, 'unlockStatus', id] as const,
 };
 
 // ── Queries ───────────────────────────────────────────────────────────────────
