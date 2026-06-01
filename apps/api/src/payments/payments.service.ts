@@ -272,6 +272,24 @@ export class PaymentsService {
     });
   }
 
+  // ── Reconciliation entry points (called by PaymentReconcileProcessor) ───────
+
+  /**
+   * Amendment 3: reconciliation success path. Routes through the same private
+   * applyPaymentSuccess that the webhook path uses — no transition logic lives
+   * here.
+   */
+  async applyVerifySuccess(payment: Payment): Promise<void> {
+    await this.prisma.$transaction((tx) => this.applyPaymentSuccess(payment, tx));
+  }
+
+  /**
+   * Amendment 3: reconciliation failure path. Mirrors applyVerifySuccess.
+   */
+  async applyVerifyFailure(payment: Payment): Promise<void> {
+    await this.prisma.$transaction((tx) => this.applyPaymentFailure(payment, tx));
+  }
+
   // ── Webhook state transitions ─────────────────────────────────────────────
 
   /**

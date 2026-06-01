@@ -10,6 +10,7 @@ import { PaymentsService } from './payments.service';
 import { PaystackClient } from './providers/paystack.client';
 import { FlutterwaveClient } from './providers/flutterwave.client';
 import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-provider.interface';
+import { PaymentReconcileProcessor } from './jobs/payment-reconcile.processor';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-pro
     { provide: PAYSTACK_PROVIDER, useExisting: PaystackClient },
     FlutterwaveClient,
     { provide: FLUTTERWAVE_PROVIDER, useExisting: FlutterwaveClient },
+    PaymentReconcileProcessor,
   ],
   exports: [PaymentsService],
 })
