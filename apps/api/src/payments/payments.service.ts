@@ -8,6 +8,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  Payment,
+  Prisma,
   PaymentPurpose,
   PaymentProvider as PrismaPaymentProvider,
   PaymentStatus,
@@ -30,6 +32,7 @@ import {
 } from './providers/payment-provider.interface';
 import { InitiateUnlockInput } from './schemas/initiate-unlock.schema';
 import { RetentionExtendInput } from './schemas/retention-extend.schema';
+import { RoomsGateway } from '../rooms/rooms.gateway';
 
 @Injectable()
 export class PaymentsService {
@@ -37,9 +40,8 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     @Inject(PAYSTACK_PROVIDER) private readonly paystack: PaymentProvider,
-    // Null until FlutterwaveClient is wired in commit 3. getProvider() guards the null case.
-
     @Inject(FLUTTERWAVE_PROVIDER) private readonly flutterwave: PaymentProvider | null,
+    private readonly gateway: RoomsGateway,
   ) {}
 
   // ── Initiate: base unlock ─────────────────────────────────────────────────
@@ -270,6 +272,51 @@ export class PaymentsService {
     });
   }
 
+  // ── Webhook state transitions ─────────────────────────────────────────────
+
+  /**
+   * Called by WebhooksController after signature verification passes and the
+   * provider signals payment success.  Amount/currency are from the webhook
+   * body and must match the Payment record we created at initiation.
+   */
+  async handleWebhookSuccess(
+    providerRef: string,
+    amountMinor: number,
+    currency: string,
+  ): Promise<void> {
+    const payment = await this.prisma.payment.findFirst({ where: { providerRef } });
+
+    // Unknown ref or already processed — silent no-op (duplicate webhook).
+    if (!payment || payment.status !== PaymentStatus.PENDING) return;
+
+    if (payment.amountMinor !== amountMinor) {
+      throw new UnprocessableEntityException({
+        code: 'AMOUNT_MISMATCH',
+        message: `Webhook amount ${amountMinor} does not match expected ${payment.amountMinor}.`,
+      });
+    }
+    if (payment.currency !== currency) {
+      throw new UnprocessableEntityException({
+        code: 'CURRENCY_MISMATCH',
+        message: `Webhook currency ${currency} does not match expected ${payment.currency}.`,
+      });
+    }
+
+    await this.prisma.$transaction((tx) => this.applyPaymentSuccess(payment, tx));
+  }
+
+  /**
+   * Called by WebhooksController when the provider signals payment failure.
+   */
+  async handleWebhookFailure(providerRef: string): Promise<void> {
+    const payment = await this.prisma.payment.findFirst({ where: { providerRef } });
+
+    // Unknown ref or already processed — silent no-op.
+    if (!payment || payment.status !== PaymentStatus.PENDING) return;
+
+    await this.prisma.$transaction((tx) => this.applyPaymentFailure(payment, tx));
+  }
+
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async initiatePayment(args: {
@@ -335,5 +382,113 @@ export class PaymentsService {
       });
     }
     return this.flutterwave;
+  }
+
+  /**
+   * Shared success path used by both webhook handler (commit 8) and the
+   * reconciliation job (commit 9).  Runs inside a caller-provided transaction.
+   *
+   * Amendment 4: `updateMany { where: { id, status: PENDING } }` is the atomic
+   * idempotency guard.  count===0 means another process beat us to it; we
+   * return without emitting so the gateway fires at most once.
+   */
+  private async applyPaymentSuccess(payment: Payment, tx: Prisma.TransactionClient): Promise<void> {
+    if (!payment.roomId) return; // defensive — all initiators set roomId
+
+    const now = new Date();
+
+    const { count } = await tx.payment.updateMany({
+      where: { id: payment.id, status: PaymentStatus.PENDING },
+      data: { status: PaymentStatus.SUCCESS, paidAt: now },
+    });
+    if (count === 0) return; // concurrent webhook already applied
+
+    switch (payment.purpose) {
+      case PaymentPurpose.BASE_UNLOCK: {
+        const room = await tx.room.findUnique({ where: { id: payment.roomId } });
+        if (!room) return;
+
+        await tx.room.update({
+          where: { id: payment.roomId },
+          data: { baseUnlockedAt: now, baseUnlockPaymentId: payment.id },
+        });
+
+        await tx.membership.updateMany({
+          where: { roomId: payment.roomId, joinOrder: { lte: room.baseCapacity }, leftAt: null },
+          data: { unlockState: 'EXEMPT', unlockedAt: now },
+        });
+
+        this.gateway.emitBaseUnlocked(payment.roomId);
+        break;
+      }
+
+      case PaymentPurpose.MEMBER_UNLOCK: {
+        if (!payment.membershipId) return; // defensive
+
+        await tx.membership.update({
+          where: { id: payment.membershipId },
+          data: { unlockState: 'UNLOCKED', unlockPaymentId: payment.id, unlockedAt: now },
+        });
+
+        // payment.userId is the member who paid — same as membership.userId.
+        this.gateway.emitMemberUnlocked(payment.roomId, payment.userId);
+        break;
+      }
+
+      case PaymentPurpose.RETENTION_EXTENSION: {
+        const room = await tx.room.findUnique({ where: { id: payment.roomId } });
+        if (!room) return;
+
+        const meta = (payment.metadata ?? {}) as Record<string, unknown>;
+        const months = typeof meta['months'] === 'number' ? meta['months'] : 1;
+
+        const newRetentionUntil = this.computeNewRetentionUntil(
+          room.retentionUntil,
+          room.endsAt,
+          months,
+        );
+
+        await tx.retentionWindow.create({
+          data: { roomId: payment.roomId, extendsTo: newRetentionUntil, paymentId: payment.id },
+        });
+
+        await tx.room.update({
+          where: { id: payment.roomId },
+          data: { retentionUntil: newRetentionUntil },
+        });
+
+        this.gateway.emitRetentionExtended(payment.roomId, newRetentionUntil.toISOString());
+        break;
+      }
+    }
+  }
+
+  /**
+   * Shared failure path — mirrors applyPaymentSuccess (Amendment 3).
+   */
+  private async applyPaymentFailure(payment: Payment, tx: Prisma.TransactionClient): Promise<void> {
+    if (!payment.roomId) return;
+
+    const { count } = await tx.payment.updateMany({
+      where: { id: payment.id, status: PaymentStatus.PENDING },
+      data: { status: PaymentStatus.FAILED },
+    });
+    if (count === 0) return; // concurrent webhook already applied
+
+    this.gateway.emitPaymentFailed(payment.roomId, payment.purpose);
+  }
+
+  /**
+   * Extends retention from `currentRetentionUntil` by `months * 30 days`,
+   * capped at `endsAt + 365 days`.
+   */
+  private computeNewRetentionUntil(
+    currentRetentionUntil: Date,
+    endsAt: Date,
+    months: number,
+  ): Date {
+    const cap = new Date(endsAt.getTime() + 365 * 24 * 60 * 60 * 1000);
+    const extended = new Date(currentRetentionUntil.getTime() + months * 30 * 24 * 60 * 60 * 1000);
+    return extended < cap ? extended : cap;
   }
 }

@@ -126,4 +126,22 @@ export class RoomsGateway
   emitRoomEnded(roomId: string) {
     this.server.to(`room:${roomId}`).emit('room:ended', { roomId });
   }
+
+  // ── Payment event emitters (called by PaymentsService) ────────────────────
+
+  emitBaseUnlocked(roomId: string) {
+    this.server.to(`room:${roomId}`).emit('room:base_unlocked', { roomId });
+  }
+
+  emitMemberUnlocked(roomId: string, userId: string) {
+    this.server.to(`room:${roomId}`).emit('member:unlocked', { roomId, userId });
+  }
+
+  emitRetentionExtended(roomId: string, retentionUntil: string) {
+    this.server.to(`room:${roomId}`).emit('room:retention_extended', { roomId, retentionUntil });
+  }
+
+  emitPaymentFailed(roomId: string, purpose: string) {
+    this.server.to(`room:${roomId}`).emit('payment:failed', { roomId, purpose });
+  }
 }

@@ -10,6 +10,7 @@ import {
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import { SkipResponseEnvelope } from '../common/interceptors/response-envelope.interceptor';
+import { PaymentsService } from './payments.service';
 
 // ── Signature helpers (exported for unit testing) ─────────────────────────────
 
@@ -28,6 +29,18 @@ export function verifyFlutterwaveHash(hashHeader: string, secretHash: string): b
   const expectedBuf = Buffer.from(secretHash);
   const headerBuf = Buffer.from(hashHeader);
   return expectedBuf.length === headerBuf.length && timingSafeEqual(expectedBuf, headerBuf);
+}
+
+// ── Webhook payload shapes (minimal — only fields we act on) ─────────────────
+
+interface PaystackWebhookPayload {
+  event: string;
+  data: { reference: string; amount: number; currency: string };
+}
+
+interface FlutterwaveWebhookPayload {
+  event: string;
+  data: { tx_ref: string; amount: number; currency: string; status: string };
 }
 
 // Parses the raw body as JSON after signature passes. Empty body is allowed
@@ -52,7 +65,7 @@ export class WebhooksController {
   private readonly paystackSecret: string | null;
   private readonly flutterwaveSecretHash: string | null;
 
-  constructor() {
+  constructor(private readonly paymentsService: PaymentsService) {
     // Rule 5: no throw in constructor — validate at first use.
     this.paystackSecret = process.env['PAYSTACK_SECRET_KEY'] ?? null;
     this.flutterwaveSecretHash = process.env['FLUTTERWAVE_SECRET_HASH'] ?? null;
@@ -62,7 +75,7 @@ export class WebhooksController {
 
   @Post('paystack')
   @HttpCode(HttpStatus.OK)
-  handlePaystack(@Req() req: Request): { received: boolean } {
+  async handlePaystack(@Req() req: Request): Promise<{ received: boolean }> {
     if (!this.paystackSecret) {
       throw new ForbiddenException({
         code: 'WEBHOOK_INVALID',
@@ -88,6 +101,20 @@ export class WebhooksController {
     }
 
     assertJsonBody(rawBody);
+
+    if (rawBody.length > 0) {
+      const event = JSON.parse(rawBody.toString('utf8')) as PaystackWebhookPayload;
+      if (event.event === 'charge.success') {
+        await this.paymentsService.handleWebhookSuccess(
+          event.data.reference,
+          event.data.amount,
+          event.data.currency,
+        );
+      } else if (event.event === 'charge.failed') {
+        await this.paymentsService.handleWebhookFailure(event.data.reference);
+      }
+    }
+
     return { received: true };
   }
 
@@ -95,7 +122,7 @@ export class WebhooksController {
 
   @Post('flutterwave')
   @HttpCode(HttpStatus.OK)
-  handleFlutterwave(@Req() req: Request): { received: boolean } {
+  async handleFlutterwave(@Req() req: Request): Promise<{ received: boolean }> {
     if (!this.flutterwaveSecretHash) {
       throw new ForbiddenException({
         code: 'WEBHOOK_INVALID',
@@ -120,6 +147,22 @@ export class WebhooksController {
     }
 
     assertJsonBody(rawBody);
+
+    if (rawBody.length > 0) {
+      const event = JSON.parse(rawBody.toString('utf8')) as FlutterwaveWebhookPayload;
+      if (event.event === 'charge.completed') {
+        if (event.data.status === 'successful') {
+          await this.paymentsService.handleWebhookSuccess(
+            event.data.tx_ref,
+            event.data.amount,
+            event.data.currency,
+          );
+        } else {
+          await this.paymentsService.handleWebhookFailure(event.data.tx_ref);
+        }
+      }
+    }
+
     return { received: true };
   }
 }

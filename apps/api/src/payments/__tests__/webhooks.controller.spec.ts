@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import express from 'express';
@@ -8,6 +8,7 @@ import {
   verifyPaystackSignature,
   verifyFlutterwaveHash,
 } from '../webhooks.controller';
+import { PaymentsService } from '../payments.service';
 import { HttpExceptionFilter } from '../../common/filters/http-exception.filter';
 
 // ── Test constants ─────────────────────────────────────────────────────────────
@@ -15,6 +16,11 @@ import { HttpExceptionFilter } from '../../common/filters/http-exception.filter'
 const PAYSTACK_SECRET = 'test-paystack-key';
 const FLW_HASH = 'test-flw-secret-hash';
 const PAYLOAD = JSON.stringify({ event: 'charge.success', data: { reference: 'ref_123' } });
+
+const mockPaymentsService = {
+  handleWebhookSuccess: jest.fn().mockResolvedValue(undefined),
+  handleWebhookFailure: jest.fn().mockResolvedValue(undefined),
+};
 
 function paystackSig(body: Buffer | string, secret = PAYSTACK_SECRET): string {
   const buf = typeof body === 'string' ? Buffer.from(body) : body;
@@ -76,6 +82,7 @@ describe('WebhooksController (http)', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [WebhooksController],
+      providers: [{ provide: PaymentsService, useValue: mockPaymentsService }],
     }).compile();
 
     app = module.createNestApplication({ bodyParser: false });
@@ -85,6 +92,11 @@ describe('WebhooksController (http)', () => {
     app.setGlobalPrefix('v1');
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
+  });
+
+  beforeEach(() => {
+    mockPaymentsService.handleWebhookSuccess.mockReset().mockResolvedValue(undefined);
+    mockPaymentsService.handleWebhookFailure.mockReset().mockResolvedValue(undefined);
   });
 
   afterAll(async () => {
@@ -195,6 +207,121 @@ describe('WebhooksController (http)', () => {
         .send(malformed)
         .expect(400);
       expect(body.error.code).toBe('WEBHOOK_MALFORMED');
+    });
+  });
+
+  // ── Payment event routing ─────────────────────────────────────────────────
+
+  describe('Paystack event routing', () => {
+    it('calls handleWebhookSuccess once for charge.success', async () => {
+      const body = JSON.stringify({
+        event: 'charge.success',
+        data: { reference: 'sher_test123', amount: 150_000, currency: 'NGN' },
+      });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/paystack')
+        .set('x-paystack-signature', paystackSig(body))
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookSuccess).toHaveBeenCalledTimes(1);
+      expect(mockPaymentsService.handleWebhookSuccess).toHaveBeenCalledWith(
+        'sher_test123',
+        150_000,
+        'NGN',
+      );
+    });
+
+    it('calls handleWebhookFailure once for charge.failed', async () => {
+      const body = JSON.stringify({
+        event: 'charge.failed',
+        data: { reference: 'sher_test123', amount: 150_000, currency: 'NGN' },
+      });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/paystack')
+        .set('x-paystack-signature', paystackSig(body))
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookFailure).toHaveBeenCalledTimes(1);
+      expect(mockPaymentsService.handleWebhookFailure).toHaveBeenCalledWith('sher_test123');
+    });
+
+    it('does not call the service for unknown events (returns 200)', async () => {
+      const body = JSON.stringify({ event: 'transfer.success', data: {} });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/paystack')
+        .set('x-paystack-signature', paystackSig(body))
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookSuccess).not.toHaveBeenCalled();
+      expect(mockPaymentsService.handleWebhookFailure).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 AMOUNT_MISMATCH when service throws it', async () => {
+      mockPaymentsService.handleWebhookSuccess.mockRejectedValueOnce(
+        new UnprocessableEntityException({ code: 'AMOUNT_MISMATCH', message: 'Amount mismatch' }),
+      );
+      const body = JSON.stringify({
+        event: 'charge.success',
+        data: { reference: 'sher_test123', amount: 999, currency: 'NGN' },
+      });
+      const { body: resBody } = await request(app.getHttpServer())
+        .post('/v1/webhooks/paystack')
+        .set('x-paystack-signature', paystackSig(body))
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(422);
+      expect(resBody.error.code).toBe('AMOUNT_MISMATCH');
+    });
+  });
+
+  describe('Flutterwave event routing', () => {
+    it('calls handleWebhookSuccess for charge.completed + status=successful', async () => {
+      const body = JSON.stringify({
+        event: 'charge.completed',
+        data: { tx_ref: 'sher_test123', amount: 150_000, currency: 'NGN', status: 'successful' },
+      });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/flutterwave')
+        .set('verif-hash', FLW_HASH)
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookSuccess).toHaveBeenCalledTimes(1);
+      expect(mockPaymentsService.handleWebhookSuccess).toHaveBeenCalledWith(
+        'sher_test123',
+        150_000,
+        'NGN',
+      );
+    });
+
+    it('calls handleWebhookFailure for charge.completed + status=failed', async () => {
+      const body = JSON.stringify({
+        event: 'charge.completed',
+        data: { tx_ref: 'sher_test123', amount: 150_000, currency: 'NGN', status: 'failed' },
+      });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/flutterwave')
+        .set('verif-hash', FLW_HASH)
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookFailure).toHaveBeenCalledTimes(1);
+      expect(mockPaymentsService.handleWebhookFailure).toHaveBeenCalledWith('sher_test123');
+    });
+
+    it('does not call the service for unknown Flutterwave events (returns 200)', async () => {
+      const body = JSON.stringify({ event: 'transfer.completed', data: {} });
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/flutterwave')
+        .set('verif-hash', FLW_HASH)
+        .set('Content-Type', 'application/json')
+        .send(body)
+        .expect(200);
+      expect(mockPaymentsService.handleWebhookSuccess).not.toHaveBeenCalled();
+      expect(mockPaymentsService.handleWebhookFailure).not.toHaveBeenCalled();
     });
   });
 });

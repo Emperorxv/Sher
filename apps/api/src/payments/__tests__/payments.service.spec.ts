@@ -22,6 +22,7 @@ import {
 } from '@nestjs/common';
 import { PaymentsService } from '../payments.service';
 import { PaymentProvider } from '../providers/payment-provider.interface';
+import { RoomsGateway } from '../../rooms/rooms.gateway';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -113,11 +114,12 @@ function makePrisma(
     paymentFindFirst: unknown;
   }> = {},
 ) {
-  return {
+  const p = {
     room: {
       findUnique: jest
         .fn()
         .mockResolvedValue('roomFindUnique' in overrides ? overrides.roomFindUnique : ENDED_ROOM),
+      update: jest.fn().mockResolvedValue(ENDED_ROOM),
     },
     membership: {
       findFirst: jest
@@ -127,6 +129,8 @@ function makePrisma(
             ? overrides.membershipFindFirst
             : EXTRA_MEMBERSHIP_LOCKED,
         ),
+      update: jest.fn().mockResolvedValue(EXTRA_MEMBERSHIP_LOCKED),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       findUnique: jest
@@ -143,7 +147,29 @@ function makePrisma(
       findFirst: jest
         .fn()
         .mockResolvedValue('paymentFindFirst' in overrides ? overrides.paymentFindFirst : null),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    retentionWindow: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    // $transaction calls fn with the mock itself as the tx client.
+    $transaction: jest.fn(),
+  };
+  p.$transaction.mockImplementation((fn: (tx: typeof p) => Promise<void>) => fn(p));
+  return p;
+}
+
+function makeGateway(): jest.Mocked<
+  Pick<
+    RoomsGateway,
+    'emitBaseUnlocked' | 'emitMemberUnlocked' | 'emitRetentionExtended' | 'emitPaymentFailed'
+  >
+> {
+  return {
+    emitBaseUnlocked: jest.fn(),
+    emitMemberUnlocked: jest.fn(),
+    emitRetentionExtended: jest.fn(),
+    emitPaymentFailed: jest.fn(),
   };
 }
 
@@ -174,17 +200,20 @@ function makeService(
   service: PaymentsService;
   prisma: ReturnType<typeof makePrisma>;
   provider: jest.Mocked<PaymentProvider>;
+  gateway: ReturnType<typeof makeGateway>;
 } {
   const prisma = makePrisma(prismaOverrides);
   const pricing = makePricing();
   const provider = { ...makeProvider(), ...providerOverrides };
+  const gateway = makeGateway();
   const service = new PaymentsService(
     prisma as never,
     pricing as never,
     provider as never,
-    null, // FlutterwaveClient — wired in commit 3
+    null, // FlutterwaveClient
+    gateway as never,
   );
-  return { service, prisma, provider };
+  return { service, prisma, provider, gateway };
 }
 
 // ── initiateBaseUnlock ────────────────────────────────────────────────────────
@@ -480,6 +509,171 @@ describe('getUnlockStatus()', () => {
     const result = await service.getUnlockStatus(ROOM_ID, HOST_ID);
     expect(result.baseUnlockPending).toBe(true);
     expect(result.memberUnlockPending).toBe(false);
+  });
+});
+
+// ── handleWebhookSuccess ──────────────────────────────────────────────────────
+
+describe('handleWebhookSuccess()', () => {
+  const PENDING_BASE_PAYMENT = { ...MOCK_PAYMENT, purpose: 'BASE_UNLOCK', status: 'PENDING' };
+  const PENDING_MEMBER_PAYMENT = {
+    ...MOCK_PAYMENT,
+    id: 'payment-2',
+    userId: GUEST_ID,
+    purpose: 'MEMBER_UNLOCK',
+    membershipId: MEMBERSHIP_ID,
+    amountMinor: 100_000,
+  };
+  const PENDING_RETENTION_PAYMENT = {
+    ...MOCK_PAYMENT,
+    id: 'payment-3',
+    purpose: 'RETENTION_EXTENSION',
+    membershipId: null,
+    metadata: { months: 3, purpose: 'RETENTION_EXTENSION' },
+  };
+
+  describe('BASE_UNLOCK', () => {
+    it('updates payment to SUCCESS, sets baseUnlockedAt, exempts capped memberships, emits room:base_unlocked', async () => {
+      const { service, prisma, gateway } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'payment-1', status: 'PENDING' }),
+          data: expect.objectContaining({ status: 'SUCCESS' }),
+        }),
+      );
+      expect(prisma.room.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: ROOM_ID },
+          data: expect.objectContaining({ baseUnlockedAt: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.membership.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            roomId: ROOM_ID,
+            joinOrder: { lte: 3 },
+            leftAt: null,
+          }),
+          data: expect.objectContaining({ unlockState: 'EXEMPT' }),
+        }),
+      );
+      expect(gateway.emitBaseUnlocked).toHaveBeenCalledWith(ROOM_ID);
+    });
+
+    it('is a no-op when providerRef matches no payment', async () => {
+      const { service, gateway } = makeService({ paymentFindFirst: null });
+      await service.handleWebhookSuccess('unknown-ref', 150_000, 'NGN');
+      expect(gateway.emitBaseUnlocked).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when payment is already SUCCESS (duplicate webhook)', async () => {
+      const { service, gateway } = makeService({
+        paymentFindFirst: { ...PENDING_BASE_PAYMENT, status: 'SUCCESS' },
+      });
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+      expect(gateway.emitBaseUnlocked).not.toHaveBeenCalled();
+    });
+
+    it('throws AMOUNT_MISMATCH when webhook amount does not match payment record', async () => {
+      const { service } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+      const err = await service
+        .handleWebhookSuccess('sher_fake-ref', 999, 'NGN')
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(UnprocessableEntityException);
+      expect((err as UnprocessableEntityException).getResponse()).toMatchObject({
+        code: 'AMOUNT_MISMATCH',
+      });
+    });
+
+    it('throws CURRENCY_MISMATCH when webhook currency does not match payment record', async () => {
+      const { service } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+      const err = await service
+        .handleWebhookSuccess('sher_fake-ref', 150_000, 'USD')
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(UnprocessableEntityException);
+      expect((err as UnprocessableEntityException).getResponse()).toMatchObject({
+        code: 'CURRENCY_MISMATCH',
+      });
+    });
+
+    it('is a no-op inside the transaction when updateMany returns count=0 (Amendment 4 — concurrent webhooks)', async () => {
+      const { service, prisma, gateway } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+      expect(gateway.emitBaseUnlocked).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('MEMBER_UNLOCK', () => {
+    it('updates membership to UNLOCKED and emits member:unlocked', async () => {
+      const { service, prisma, gateway } = makeService({
+        paymentFindFirst: PENDING_MEMBER_PAYMENT,
+      });
+
+      await service.handleWebhookSuccess('sher_fake-ref', 100_000, 'NGN');
+
+      expect(prisma.membership.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: MEMBERSHIP_ID },
+          data: expect.objectContaining({ unlockState: 'UNLOCKED' }),
+        }),
+      );
+      expect(gateway.emitMemberUnlocked).toHaveBeenCalledWith(ROOM_ID, GUEST_ID);
+    });
+  });
+
+  describe('RETENTION_EXTENSION', () => {
+    it('creates a RetentionWindow, updates room.retentionUntil, emits room:retention_extended', async () => {
+      const { service, prisma, gateway } = makeService({
+        paymentFindFirst: PENDING_RETENTION_PAYMENT,
+      });
+
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+
+      expect(prisma.retentionWindow.create).toHaveBeenCalled();
+      expect(prisma.room.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ retentionUntil: expect.any(Date) }),
+        }),
+      );
+      expect(gateway.emitRetentionExtended).toHaveBeenCalledWith(ROOM_ID, expect.any(String));
+    });
+  });
+});
+
+// ── handleWebhookFailure ──────────────────────────────────────────────────────
+
+describe('handleWebhookFailure()', () => {
+  const PENDING_BASE_PAYMENT = { ...MOCK_PAYMENT, purpose: 'BASE_UNLOCK', status: 'PENDING' };
+
+  it('updates payment to FAILED and emits payment:failed', async () => {
+    const { service, prisma, gateway } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+
+    await service.handleWebhookFailure('sher_fake-ref');
+
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'payment-1', status: 'PENDING' }),
+        data: { status: 'FAILED' },
+      }),
+    );
+    expect(gateway.emitPaymentFailed).toHaveBeenCalledWith(ROOM_ID, 'BASE_UNLOCK');
+  });
+
+  it('is a no-op when providerRef matches no payment', async () => {
+    const { service, gateway } = makeService({ paymentFindFirst: null });
+    await service.handleWebhookFailure('unknown-ref');
+    expect(gateway.emitPaymentFailed).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when updateMany returns count=0 (Amendment 4 — concurrent webhook)', async () => {
+    const { service, prisma, gateway } = makeService({ paymentFindFirst: PENDING_BASE_PAYMENT });
+    prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+    await service.handleWebhookFailure('sher_fake-ref');
+    expect(gateway.emitPaymentFailed).not.toHaveBeenCalled();
   });
 });
 

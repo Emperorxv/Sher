@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { RoomsModule } from '../rooms/rooms.module';
 import { PaymentsController } from './payments.controller';
 import { UnlocksController } from './unlocks.controller';
 import { WebhooksController } from './webhooks.controller';
@@ -15,6 +16,7 @@ import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-pro
     PrismaModule,
     PricingModule,
     AuthModule, // provides JwtAuthGuard
+    RoomsModule, // provides RoomsGateway for payment event emits
   ],
   controllers: [PaymentsController, UnlocksController, WebhooksController],
   providers: [

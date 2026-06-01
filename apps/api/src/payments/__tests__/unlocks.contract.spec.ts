@@ -31,6 +31,7 @@ import {
   PaymentProvider,
   PaymentInitResult,
 } from '../providers/payment-provider.interface';
+import { RoomsGateway } from '../../rooms/rooms.gateway';
 
 // ── Test RSA key pair ─────────────────────────────────────────────────────────
 
@@ -190,6 +191,15 @@ describe('UnlocksController (contract)', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PAYSTACK_PROVIDER, useValue: mockPaystack },
         { provide: FLUTTERWAVE_PROVIDER, useValue: null },
+        {
+          provide: RoomsGateway,
+          useValue: {
+            emitBaseUnlocked: jest.fn(),
+            emitMemberUnlocked: jest.fn(),
+            emitRetentionExtended: jest.fn(),
+            emitPaymentFailed: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
