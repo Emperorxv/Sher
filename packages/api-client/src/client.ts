@@ -2,6 +2,7 @@ import type {
   AuthTokensDto,
   CreateRoomDto,
   CreateRoomResponseDto,
+  InitiateUnlockBodyDto,
   JoinRoomDto,
   JoinRoomResponseDto,
   MemberDto,
@@ -9,10 +10,14 @@ import type {
   OtpRequestResponseDto,
   OtpVerifyDto,
   PaginatedDto,
+  PaymentHistoryItemDto,
+  PaymentInitDto,
   PricingQuoteDto,
   RefreshTokenDto,
+  RetentionExtendBodyDto,
   RoomDto,
   RoomSummaryDto,
+  UnlockStatusDto,
   UserDto,
   VerifyOtpResponseDto,
 } from '@sher/shared-types';
@@ -164,7 +169,39 @@ export function createApiClient(opts: ApiClientOptions) {
       ),
   };
 
-  return { auth, rooms };
+  // ─── Payments endpoints ─────────────────────────────────────────────────────
+
+  const payments = {
+    /** POST /v1/rooms/:id/unlock/base — host initiates base unlock */
+    initiateBaseUnlock: (roomId: string, body: InitiateUnlockBodyDto = {}) =>
+      rawFetch<PaymentInitDto>(`/v1/rooms/${roomId}/unlock/base`, {
+        method: 'POST',
+        body,
+      }),
+
+    /** POST /v1/rooms/:id/unlock/member — extra member self-pays */
+    initiateMemberUnlock: (roomId: string, body: InitiateUnlockBodyDto = {}) =>
+      rawFetch<PaymentInitDto>(`/v1/rooms/${roomId}/unlock/member`, {
+        method: 'POST',
+        body,
+      }),
+
+    /** POST /v1/rooms/:id/retention/extend — extend photo retention */
+    initiateRetentionExtension: (roomId: string, body: RetentionExtendBodyDto) =>
+      rawFetch<PaymentInitDto>(`/v1/rooms/${roomId}/retention/extend`, {
+        method: 'POST',
+        body,
+      }),
+
+    /** GET /v1/rooms/:id/unlock/status — caller's current unlock state */
+    getUnlockStatus: (roomId: string) =>
+      rawFetch<UnlockStatusDto>(`/v1/rooms/${roomId}/unlock/status`),
+
+    /** GET /v1/payments — full payment history for the authenticated user */
+    getPaymentHistory: () => rawFetch<PaymentHistoryItemDto[]>('/v1/payments'),
+  };
+
+  return { auth, rooms, payments };
 }
 
 export class ApiError extends Error {
