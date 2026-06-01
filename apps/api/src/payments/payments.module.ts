@@ -7,6 +7,7 @@ import { UnlocksController } from './unlocks.controller';
 import { WebhooksController } from './webhooks.controller';
 import { PaymentsService } from './payments.service';
 import { PaystackClient } from './providers/paystack.client';
+import { FlutterwaveClient } from './providers/flutterwave.client';
 import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-provider.interface';
 
 @Module({
@@ -20,8 +21,8 @@ import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-pro
     PaymentsService,
     PaystackClient,
     { provide: PAYSTACK_PROVIDER, useExisting: PaystackClient },
-    // FlutterwaveClient wired in commit 3; null until then — PaymentsService guards the null case.
-    { provide: FLUTTERWAVE_PROVIDER, useValue: null },
+    FlutterwaveClient,
+    { provide: FLUTTERWAVE_PROVIDER, useExisting: FlutterwaveClient },
   ],
   exports: [PaymentsService],
 })
