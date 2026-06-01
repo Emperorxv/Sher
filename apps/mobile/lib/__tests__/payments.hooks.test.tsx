@@ -149,7 +149,7 @@ describe('useInitiateBaseUnlock', () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync();
+      await result.current.mutateAsync({});
     });
 
     // Default body is {} (PAYSTACK is server-default when no provider specified)
