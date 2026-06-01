@@ -15,6 +15,21 @@ jobs:
     name: Lint · Typecheck · Test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sher
+          POSTGRES_PASSWORD: sher
+          POSTGRES_DB: sher_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,5 +50,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Run Prisma migrations
+        run: pnpm --filter api migrate:deploy
+        env:
+          DATABASE_URL: postgresql://sher:sher@localhost:5432/sher_test
+
       - name: Test
         run: pnpm test
+        env:
+          DATABASE_URL: postgresql://sher:sher@localhost:5432/sher_test
