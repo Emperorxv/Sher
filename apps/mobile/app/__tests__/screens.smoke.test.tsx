@@ -64,6 +64,7 @@ jest.mock('../../lib/rooms', () => ({
   })),
   useRoom: jest.fn(() => ({ data: null, isLoading: true })),
   useRoomMembers: jest.fn(() => ({ data: null })),
+  useRoomPricing: jest.fn(() => ({ data: null })),
   useCreateRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useJoinRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useEndRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
@@ -74,7 +75,15 @@ jest.mock('../../lib/rooms', () => ({
     detail: (id: string) => ['rooms', 'detail', id],
     members: (id: string) => ['rooms', 'members', id],
     pricing: (id: string) => ['rooms', 'pricing', id],
+    unlockStatus: (id: string) => ['rooms', 'unlockStatus', id],
   },
+}));
+
+// lib/payments: payment hooks — prevent real API calls
+jest.mock('../../lib/payments', () => ({
+  useUnlockStatus: jest.fn(() => ({ data: null })),
+  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
 }));
 
 // lib/socket: prevent real WebSocket connections

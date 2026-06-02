@@ -11,6 +11,10 @@ export type RoomSocketEvents = {
   'member:joined': (data: { roomId: string; userId: string; joinOrder: number }) => void;
   'member:left': (data: { roomId: string; userId: string }) => void;
   'room:ended': (data: { roomId: string }) => void;
+  'room:base_unlocked': (data: { roomId: string }) => void;
+  'member:unlocked': (data: { roomId: string; userId: string }) => void;
+  'room:retention_extended': (data: { roomId: string; retentionUntil: string }) => void;
+  'payment:failed': (data: { roomId: string; purpose: string }) => void;
 };
 
 let socket: Socket | null = null;
@@ -63,16 +67,32 @@ export function subscribeToRoom(roomId: string, handlers: Partial<RoomSocketEven
 
   socket.emit('room:join', { roomId });
 
-  const { 'member:joined': onJoined, 'member:left': onLeft, 'room:ended': onEnded } = handlers;
+  const {
+    'member:joined': onJoined,
+    'member:left': onLeft,
+    'room:ended': onEnded,
+    'room:base_unlocked': onBaseUnlocked,
+    'member:unlocked': onMemberUnlocked,
+    'room:retention_extended': onRetentionExtended,
+    'payment:failed': onPaymentFailed,
+  } = handlers;
 
   if (onJoined) socket.on('member:joined', onJoined);
   if (onLeft) socket.on('member:left', onLeft);
   if (onEnded) socket.on('room:ended', onEnded);
+  if (onBaseUnlocked) socket.on('room:base_unlocked', onBaseUnlocked);
+  if (onMemberUnlocked) socket.on('member:unlocked', onMemberUnlocked);
+  if (onRetentionExtended) socket.on('room:retention_extended', onRetentionExtended);
+  if (onPaymentFailed) socket.on('payment:failed', onPaymentFailed);
 
   return () => {
     socket?.emit('room:leave', { roomId });
     if (onJoined) socket?.off('member:joined', onJoined);
     if (onLeft) socket?.off('member:left', onLeft);
     if (onEnded) socket?.off('room:ended', onEnded);
+    if (onBaseUnlocked) socket?.off('room:base_unlocked', onBaseUnlocked);
+    if (onMemberUnlocked) socket?.off('member:unlocked', onMemberUnlocked);
+    if (onRetentionExtended) socket?.off('room:retention_extended', onRetentionExtended);
+    if (onPaymentFailed) socket?.off('payment:failed', onPaymentFailed);
   };
 }

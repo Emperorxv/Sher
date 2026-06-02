@@ -48,6 +48,7 @@ jest.mock('../../lib/socket', () => ({
 jest.mock('../../lib/rooms', () => ({
   useRoom: jest.fn(() => ({ data: null, isLoading: true })),
   useRoomMembers: jest.fn(() => ({ data: null })),
+  useRoomPricing: jest.fn(() => ({ data: null })),
   useEndRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useRemoveMember: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useCreateRoom: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
@@ -58,7 +59,14 @@ jest.mock('../../lib/rooms', () => ({
     detail: (id: string) => ['rooms', 'detail', id],
     members: (id: string) => ['rooms', 'members', id],
     pricing: (id: string) => ['rooms', 'pricing', id],
+    unlockStatus: (id: string) => ['rooms', 'unlockStatus', id],
   },
+}));
+
+jest.mock('../../lib/payments', () => ({
+  useUnlockStatus: jest.fn(() => ({ data: null })),
+  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
 }));
 
 jest.mock('../../stores/auth', () => ({
@@ -98,6 +106,7 @@ const ROOM_ID = 'room-test-1';
 const roomKeys = {
   detail: (id: string) => ['rooms', 'detail', id],
   members: (id: string) => ['rooms', 'members', id],
+  unlockStatus: (id: string) => ['rooms', 'unlockStatus', id],
 };
 
 function makeQc() {

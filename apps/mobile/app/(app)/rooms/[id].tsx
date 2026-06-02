@@ -3,9 +3,11 @@
  * Host can end the room or remove members.
  * Guests can leave the room.
  * Phase 4: real-time updates via Socket.IO subscription.
+ * Phase 5: PaywallSheet + LockedGalleryPlaceholder when room has ended and
+ *           the caller has not yet unlocked.
  */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,8 +22,25 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@sher/shared-types';
-import { Button, JoinCodeDisplay } from '../../../components';
-import { useRoom, useRoomMembers, useEndRoom, useRemoveMember, roomKeys } from '../../../lib/rooms';
+import {
+  Button,
+  JoinCodeDisplay,
+  PaywallSheet,
+  LockedGalleryPlaceholder,
+} from '../../../components';
+import {
+  useRoom,
+  useRoomMembers,
+  useRoomPricing,
+  useEndRoom,
+  useRemoveMember,
+  roomKeys,
+} from '../../../lib/rooms';
+import {
+  useUnlockStatus,
+  useInitiateBaseUnlock,
+  useInitiateMemberUnlock,
+} from '../../../lib/payments';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
 import { useAuthStore } from '../../../stores/auth';
@@ -76,14 +95,65 @@ export default function RoomDashboard() {
   const { user } = useAuthStore();
   const userId = user?.id;
 
+  // ── Data hooks ─────────────────────────────────────────────────────────────
+
   const { data: room, isLoading } = useRoom(id ?? '');
   const { data: membersPage } = useRoomMembers(id ?? '');
+  const { data: unlockStatus } = useUnlockStatus(id ?? '');
+  const { data: pricingData } = useRoomPricing(id ?? '');
   const endRoom = useEndRoom();
   const removeMember = useRemoveMember();
+  const initiateBase = useInitiateBaseUnlock(id ?? '');
+  const initiateMember = useInitiateMemberUnlock(id ?? '');
+
+  // ── Paywall state ──────────────────────────────────────────────────────────
+
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paymentFailedMsg, setPaymentFailedMsg] = useState<string | null>(null);
+  const autoOpened = useRef(false);
+
+  // ── Computed paywall values (null-safe; evaluated before early return) ─────
+
+  const isHost = room?.hostId === userId;
+  const isActive = room?.status === 'ACTIVE';
+
+  // isLocked is false until unlockStatus loads; avoids flash for unlocked users
+  const isLocked = unlockStatus?.callerUnlockState === 'LOCKED';
+  const showPaywall = room?.status === 'ENDED' && isLocked;
+
+  const callerMember = membersPage?.items.find((m) => m.userId === userId);
+  const isExtraMember = (callerMember?.joinOrder ?? 0) > (room?.baseCapacity ?? 3);
+  const paywallPurpose: 'BASE_UNLOCK' | 'MEMBER_UNLOCK' = isExtraMember
+    ? 'MEMBER_UNLOCK'
+    : 'BASE_UNLOCK';
+  const showLockedPlaceholder = showPaywall && !isHost && !isExtraMember;
+
+  const paywallPricing =
+    paywallPurpose === 'BASE_UNLOCK'
+      ? {
+          amountMinor: pricingData?.baseUnlock.amountMinor ?? 0,
+          currency: pricingData?.currency ?? '',
+          amountDisplay: pricingData?.baseUnlock.display ?? '…',
+        }
+      : {
+          amountMinor: pricingData?.memberUnlock.amountMinor ?? 0,
+          currency: pricingData?.currency ?? '',
+          amountDisplay: pricingData?.memberUnlock.display ?? '…',
+        };
+
+  // ── Auto-open paywall for host / extra-member on first encounter ───────────
+
+  useEffect(() => {
+    if (!autoOpened.current && showPaywall && (isHost || isExtraMember)) {
+      autoOpened.current = true;
+      setPaywallOpen(true);
+    }
+  }, [showPaywall, isHost, isExtraMember]);
+
+  // ── Socket.IO subscription for live updates ────────────────────────────────
 
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Socket.IO subscription for live member updates
   useEffect(() => {
     if (!id) return;
 
@@ -99,13 +169,26 @@ export default function RoomDashboard() {
         'member:left': (data) => {
           void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
-          // If the current user was removed by the host, navigate back.
           if (data.userId === userId) {
             router.replace('/rooms');
           }
         },
         'room:ended': () => {
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
+        },
+        'room:base_unlocked': () => {
+          void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(id) });
+          void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
+        },
+        'member:unlocked': () => {
+          void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(id) });
+          void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
+        },
+        'room:retention_extended': () => {
+          void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
+        },
+        'payment:failed': () => {
+          setPaymentFailedMsg('Payment failed. Please try again.');
         },
       });
     });
@@ -122,6 +205,28 @@ export default function RoomDashboard() {
       disconnectRoomSocket();
     };
   }, []);
+
+  // ── Payment handler ────────────────────────────────────────────────────────
+
+  const handlePay = useCallback(
+    async (provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
+      const hook = paywallPurpose === 'BASE_UNLOCK' ? initiateBase : initiateMember;
+      // Let errors propagate — PaywallSheet catches and maps them
+      const result = await hook.mutateAsync({ provider });
+      router.push({
+        pathname: '/checkout/[paymentRef]',
+        params: {
+          paymentRef: result.providerRef,
+          roomId: id!,
+          authorizationUrl: result.authorizationUrl,
+          purpose: paywallPurpose,
+        },
+      });
+    },
+    [paywallPurpose, initiateBase, initiateMember, id, router],
+  );
+
+  // ── Room actions ───────────────────────────────────────────────────────────
 
   async function handleEndRoom() {
     if (!id) return;
@@ -188,6 +293,8 @@ export default function RoomDashboard() {
     ]);
   }
 
+  // ── Loading guard ──────────────────────────────────────────────────────────
+
   if (isLoading || !room) {
     return (
       <SafeAreaView style={[styles.safe, styles.centered]}>
@@ -196,8 +303,7 @@ export default function RoomDashboard() {
     );
   }
 
-  const isHost = room.hostId === userId;
-  const isActive = room.status === 'ACTIVE';
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -264,6 +370,21 @@ export default function RoomDashboard() {
           />
         </View>
 
+        {/* Locked gallery placeholder (within-capacity members waiting for host to pay) */}
+        {showLockedPlaceholder && (
+          <LockedGalleryPlaceholder
+            photoCount={room.photoCount || 10}
+            onUnlockPress={() => setPaywallOpen(true)}
+          />
+        )}
+
+        {/* Payment failed non-blocking toast */}
+        {paymentFailedMsg && (
+          <View style={styles.toast} testID="payment-failed-toast">
+            <Text style={styles.toastText}>{paymentFailedMsg}</Text>
+          </View>
+        )}
+
         {/* Host actions */}
         {isHost && isActive && (
           <Button
@@ -286,6 +407,16 @@ export default function RoomDashboard() {
           />
         )}
       </ScrollView>
+
+      {/* Paywall sheet — Modal overlay */}
+      {paywallOpen && (
+        <PaywallSheet
+          pricing={paywallPricing}
+          purpose={paywallPurpose}
+          onPay={handlePay}
+          onDismiss={() => setPaywallOpen(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -417,6 +548,17 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     backgroundColor: colors.fog,
+  },
+  toast: {
+    backgroundColor: colors.danger,
+    borderRadius: radii.button,
+    padding: spacing.sm,
+    alignItems: 'center',
+  },
+  toastText: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.body2,
+    color: colors.cream,
   },
   endBtn: {
     marginTop: spacing.sm,
