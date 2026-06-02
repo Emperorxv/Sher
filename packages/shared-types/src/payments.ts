@@ -49,7 +49,9 @@ export interface PaymentHistoryItemDto {
   amountMinor: number;
   currency: string;
   amountDisplay: string;
+  provider: PaymentProvider;
   roomId: string | null;
+  roomName: string | null;
   paidAt: string | null; // ISO-8601 UTC
   createdAt: string; // ISO-8601 UTC
 }

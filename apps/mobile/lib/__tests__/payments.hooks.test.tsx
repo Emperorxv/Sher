@@ -94,7 +94,9 @@ const MOCK_HISTORY_ITEM: PaymentHistoryItemDto = {
   amountMinor: 150_000,
   currency: 'NGN',
   amountDisplay: '₦1,500.00',
+  provider: 'PAYSTACK',
   roomId: 'room-1',
+  roomName: 'Test Room',
   paidAt: '2026-05-01T12:00:00.000Z',
   createdAt: '2026-05-01T11:55:00.000Z',
 };

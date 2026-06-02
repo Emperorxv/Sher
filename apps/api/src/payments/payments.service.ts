@@ -251,6 +251,7 @@ export class PaymentsService {
     const payments = await this.prisma.payment.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: { room: { select: { name: true } } },
     });
 
     return payments.map((p) => {
@@ -265,7 +266,9 @@ export class PaymentsService {
         amountMinor: p.amountMinor,
         currency: p.currency,
         amountDisplay: quote,
+        provider: p.provider as PaymentHistoryItemDto['provider'],
         roomId: p.roomId,
+        roomName: p.room?.name ?? null,
         paidAt: p.paidAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
       };

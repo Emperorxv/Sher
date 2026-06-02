@@ -98,6 +98,7 @@ const MOCK_PAYMENT = {
   metadata: {},
   paidAt: null,
   createdAt: new Date('2026-05-28'),
+  room: { name: 'Test Room' },
 };
 
 // ── Mock factories ────────────────────────────────────────────────────────────
@@ -704,7 +705,9 @@ describe('getPaymentHistory()', () => {
       amountMinor: 150_000,
       currency: 'NGN',
       amountDisplay: '₦1,500.00',
+      provider: 'PAYSTACK',
       roomId: ROOM_ID,
+      roomName: 'Test Room',
       paidAt: '2026-05-28T10:00:00.000Z',
     });
     expect(typeof result[0]!.createdAt).toBe('string');
