@@ -8,6 +8,7 @@ import { PricingModule } from './pricing/pricing.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PhotosModule } from './photos/photos.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
@@ -44,6 +45,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     PricingModule,
     RoomsModule,
     PaymentsModule,
+    PhotosModule,
   ],
 })
 export class AppModule implements NestModule {
