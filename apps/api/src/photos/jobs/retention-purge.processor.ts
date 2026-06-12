@@ -59,7 +59,7 @@ export class RetentionPurgeProcessor implements OnModuleInit, OnModuleDestroy {
 
     // Upsert the repeating job — BullMQ deduplicates by (name + repeat key).
     await this.queue.add(PURGE_JOB_NAME, null, {
-      repeat: { pattern: PURGE_CRON },
+      repeat: { pattern: PURGE_CRON, tz: 'UTC' },
       jobId: `${PURGE_JOB_NAME}-singleton`,
     });
 

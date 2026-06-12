@@ -100,11 +100,10 @@ function makeQueue() {
 }
 
 function makeService(prismaOverrides: Record<string, unknown> = {}) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock
   return new PhotosService(
-    makePrisma(prismaOverrides) as any,
-    makeStorage() as any,
-    makeQueue() as any,
+    makePrisma(prismaOverrides) as never,
+    makeStorage() as never,
+    makeQueue() as never,
   );
 }
 
