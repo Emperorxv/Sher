@@ -226,10 +226,10 @@ export function createApiClient(opts: ApiClientOptions) {
 
     /** GET /v1/rooms/:id/photos — cursor-paginated photo list */
     list: (roomId: string, cursor?: string, limit?: number) => {
-      const params = new URLSearchParams();
-      if (cursor !== undefined) params.set('cursor', cursor);
-      if (limit !== undefined) params.set('limit', String(limit));
-      const qs = params.toString();
+      const parts: string[] = [];
+      if (cursor !== undefined) parts.push(`cursor=${encodeURIComponent(cursor)}`);
+      if (limit !== undefined) parts.push(`limit=${encodeURIComponent(String(limit))}`);
+      const qs = parts.join('&');
       return rawFetch<PhotoListResponseDto>(`/v1/rooms/${roomId}/photos${qs ? `?${qs}` : ''}`);
     },
 

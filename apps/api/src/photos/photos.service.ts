@@ -5,6 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PhotoStatus, RoomStatus } from '@prisma/client';
+import {
+  PhotoDetailDto,
+  PhotoDto,
+  PhotoListResponseDto,
+  UploadUrlResponseDto,
+} from '@sher/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PhotoQueueService } from './photos-queue.service';
@@ -15,42 +21,6 @@ import {
   MIME_TO_EXT,
   SIGNED_URL_TTL_SECONDS,
 } from '../common/constants/photos';
-
-// ── Response shapes ───────────────────────────────────────────────────────────
-
-export interface UploadUrlResponse {
-  uploadUrl: string;
-  photoId: string;
-  key: string;
-}
-
-export interface PhotoDto {
-  id: string;
-  roomId: string;
-  uploaderId: string;
-  status: PhotoStatus;
-  mimeType: string;
-  sizeBytes: number;
-  takenAt: string | null;
-  filter: string | null;
-  thumbUrl: string | null;
-  mediumUrl: string | null;
-  createdAt: string;
-}
-
-export interface PhotoDetailDto extends PhotoDto {
-  originalUrl: string | null;
-}
-
-export interface PhotoListMeta {
-  locked: boolean;
-  nextCursor: string | null;
-}
-
-export interface PhotoListResponse {
-  data: PhotoDto[];
-  meta: PhotoListMeta;
-}
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
@@ -68,7 +38,7 @@ export class PhotosService {
     roomId: string,
     userId: string,
     dto: UploadUrlInput,
-  ): Promise<UploadUrlResponse> {
+  ): Promise<UploadUrlResponseDto> {
     // Validate MIME and size (belt-and-suspenders — schema already checks these)
     if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(dto.mimeType)) {
       throw new BadRequestException({ code: 'INVALID_MIME', message: 'Unsupported image type.' });
@@ -161,7 +131,7 @@ export class PhotosService {
     userId: string,
     cursor?: string,
     limit = 30,
-  ): Promise<PhotoListResponse> {
+  ): Promise<PhotoListResponseDto> {
     const { membership, room } = await this.getMembershipAndRoom(roomId, userId);
 
     // Paywall: LOCKED membership in an ENDED room sees nothing
