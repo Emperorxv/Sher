@@ -15,14 +15,19 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.sher.mobile"
+      "bundleIdentifier": "app.sher.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Sher needs camera access to capture photos for your room.",
+        "NSMicrophoneUsageDescription": "Sher requests microphone access as required by the camera system."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFF8F0"
       },
-      "package": "app.sher.mobile"
+      "package": "app.sher.mobile",
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": ["expo-router", "expo-secure-store", "expo-build-properties"],
     "experiments": {

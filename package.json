@@ -34,6 +34,7 @@
       "@nestjs/core",
       "@prisma/client",
       "@prisma/engines",
+      "@shopify/react-native-skia",
       "prisma"
     ]
   },
