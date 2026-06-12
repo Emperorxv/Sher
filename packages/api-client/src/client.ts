@@ -2,6 +2,7 @@ import type {
   AuthTokensDto,
   CreateRoomDto,
   CreateRoomResponseDto,
+  GetUploadUrlBodyDto,
   InitiateUnlockBodyDto,
   JoinRoomDto,
   JoinRoomResponseDto,
@@ -12,12 +13,15 @@ import type {
   PaginatedDto,
   PaymentHistoryItemDto,
   PaymentInitDto,
+  PhotoDetailDto,
+  PhotoListResponseDto,
   PricingQuoteDto,
   RefreshTokenDto,
   RetentionExtendBodyDto,
   RoomDto,
   RoomSummaryDto,
   UnlockStatusDto,
+  UploadUrlResponseDto,
   UserDto,
   VerifyOtpResponseDto,
 } from '@sher/shared-types';
@@ -201,7 +205,40 @@ export function createApiClient(opts: ApiClientOptions) {
     getPaymentHistory: () => rawFetch<PaymentHistoryItemDto[]>('/v1/payments'),
   };
 
-  return { auth, rooms, payments };
+  // ─── Photos endpoints ────────────────────────────────────────────────────────
+
+  const photos = {
+    /** POST /v1/rooms/:id/photos/upload-url — get a presigned PUT URL */
+    getUploadUrl: (roomId: string, body: GetUploadUrlBodyDto) =>
+      rawFetch<UploadUrlResponseDto>(`/v1/rooms/${roomId}/photos/upload-url`, {
+        method: 'POST',
+        body,
+      }),
+
+    /**
+     * POST /v1/rooms/:id/photos/:photoId/commit — signal that the PUT to R2
+     * completed; enqueues the photo for processing.
+     */
+    commit: (roomId: string, photoId: string) =>
+      rawFetch<{ photoId: string }>(`/v1/rooms/${roomId}/photos/${photoId}/commit`, {
+        method: 'POST',
+      }),
+
+    /** GET /v1/rooms/:id/photos — cursor-paginated photo list */
+    list: (roomId: string, cursor?: string, limit?: number) => {
+      const params = new URLSearchParams();
+      if (cursor !== undefined) params.set('cursor', cursor);
+      if (limit !== undefined) params.set('limit', String(limit));
+      const qs = params.toString();
+      return rawFetch<PhotoListResponseDto>(`/v1/rooms/${roomId}/photos${qs ? `?${qs}` : ''}`);
+    },
+
+    /** GET /v1/rooms/:id/photos/:photoId — single photo with original URL */
+    get: (roomId: string, photoId: string) =>
+      rawFetch<PhotoDetailDto>(`/v1/rooms/${roomId}/photos/${photoId}`),
+  };
+
+  return { auth, rooms, payments, photos };
 }
 
 export class ApiError extends Error {

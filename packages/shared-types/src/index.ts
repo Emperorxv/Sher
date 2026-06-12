@@ -25,6 +25,16 @@ export type {
 } from './rooms';
 
 export type {
+  PhotoStatus,
+  GetUploadUrlBodyDto,
+  UploadUrlResponseDto,
+  PhotoDto,
+  PhotoDetailDto,
+  PhotoListMeta,
+  PhotoListResponseDto,
+} from './photos';
+
+export type {
   PaymentProvider,
   PaymentStatus,
   PaymentPurpose,
