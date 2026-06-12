@@ -223,6 +223,94 @@ describe('StorageService', () => {
     });
   });
 
+  // ── getObjectBuffer ─────────────────────────────────────────────────────────
+
+  describe('getObjectBuffer', () => {
+    beforeEach(() => setEnv());
+
+    it('returns a Buffer containing the object body', async () => {
+      const data = Buffer.from('image-bytes');
+      s3Mock.on(GetObjectCommand).resolves({
+        Body: {
+          transformToByteArray: async () => new Uint8Array(data),
+        } as never,
+      });
+      const svc = new StorageService();
+      const result = await svc.getObjectBuffer('originals/room1/photo1.jpg');
+      expect(result).toBeInstanceOf(Buffer);
+      expect(result).toEqual(data);
+    });
+
+    it('sends GetObjectCommand with correct Bucket and Key', async () => {
+      s3Mock.on(GetObjectCommand).resolves({
+        Body: {
+          transformToByteArray: async () => new Uint8Array(Buffer.from('bytes')),
+        } as never,
+      });
+      const svc = new StorageService();
+      await svc.getObjectBuffer('originals/r1/p1.jpg');
+
+      const calls = s3Mock.commandCalls(GetObjectCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.args[0].input).toEqual({
+        Bucket: 'test-bucket',
+        Key: 'originals/r1/p1.jpg',
+      });
+    });
+
+    it('throws when R2 returns no Body', async () => {
+      s3Mock.on(GetObjectCommand).resolves({ Body: undefined });
+      const svc = new StorageService();
+      await expect(svc.getObjectBuffer('originals/r1/p1.jpg')).rejects.toThrow(
+        'Empty body returned from R2',
+      );
+    });
+
+    it('throws ServiceUnavailableException when env absent', async () => {
+      clearEnv(); // inner beforeEach already called setEnv(); override it
+      const svc = new StorageService();
+      await expect(svc.getObjectBuffer('k')).rejects.toThrow(ServiceUnavailableException);
+    });
+  });
+
+  // ── putObject ───────────────────────────────────────────────────────────────
+
+  describe('putObject', () => {
+    beforeEach(() => setEnv());
+
+    it('sends PutObjectCommand with correct Bucket, Key, Body, and ContentType', async () => {
+      s3Mock.on(PutObjectCommand).resolves({});
+      const body = Buffer.from('webp-data');
+      const svc = new StorageService();
+      await svc.putObject('thumbs/room1/photo1.webp', body, 'image/webp');
+
+      const calls = s3Mock.commandCalls(PutObjectCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.args[0].input).toEqual({
+        Bucket: 'test-bucket',
+        Key: 'thumbs/room1/photo1.webp',
+        Body: body,
+        ContentType: 'image/webp',
+      });
+    });
+
+    it('resolves without throwing on success', async () => {
+      s3Mock.on(PutObjectCommand).resolves({});
+      const svc = new StorageService();
+      await expect(
+        svc.putObject('thumbs/r1/p1.webp', Buffer.from('data'), 'image/webp'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws ServiceUnavailableException when env absent', async () => {
+      clearEnv(); // inner beforeEach already called setEnv(); override it
+      const svc = new StorageService();
+      await expect(svc.putObject('k', Buffer.from('x'), 'image/webp')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
+
   // ── S3Client endpoint ───────────────────────────────────────────────────────
 
   describe('S3Client endpoint', () => {

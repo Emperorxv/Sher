@@ -124,4 +124,29 @@ export class StorageService {
     const { bucketName } = this.getConfig();
     await this.client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
   }
+
+  /**
+   * Downloads an object from R2 and returns its content as a Buffer.
+   * Used by the photo processing worker to fetch the original for resizing.
+   */
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    const { bucketName } = this.getConfig();
+    const response = await this.client.send(new GetObjectCommand({ Bucket: bucketName, Key: key }));
+    if (!response.Body) {
+      throw new Error(`Empty body returned from R2 for key: ${key}`);
+    }
+    const bytes = await response.Body.transformToByteArray();
+    return Buffer.from(bytes);
+  }
+
+  /**
+   * Uploads a Buffer to R2 under the given key.
+   * Used by the photo processing worker to store generated derivatives (thumb, medium).
+   */
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    const { bucketName } = this.getConfig();
+    await this.client.send(
+      new PutObjectCommand({ Bucket: bucketName, Key: key, Body: body, ContentType: contentType }),
+    );
+  }
 }

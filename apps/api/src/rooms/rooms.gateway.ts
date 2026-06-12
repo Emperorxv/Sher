@@ -24,6 +24,12 @@ export interface MemberLeftPayload {
   userId: string;
 }
 
+export interface PhotoNewPayload {
+  photoId: string;
+  thumbUrl: string;
+  uploaderId: string;
+}
+
 /**
  * Socket.IO gateway for the /rooms namespace.
  *
@@ -143,5 +149,15 @@ export class RoomsGateway
 
   emitPaymentFailed(roomId: string, purpose: string) {
     this.server.to(`room:${roomId}`).emit('payment:failed', { roomId, purpose });
+  }
+
+  // ── Photo event emitters (called by PhotoProcessorService) ────────────────
+
+  emitPhotoNew(roomId: string, payload: PhotoNewPayload) {
+    this.server.to(`room:${roomId}`).emit('photo:new', payload);
+  }
+
+  emitPhotoDeleted(roomId: string, photoId: string) {
+    this.server.to(`room:${roomId}`).emit('photo:deleted', { photoId });
   }
 }
