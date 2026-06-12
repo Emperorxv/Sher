@@ -82,6 +82,25 @@ Turborepo starts all workspaces in parallel:
 - Worker: runs as a standalone NestJS context
 - Mobile: Expo Metro bundler — follow the QR / press `i` for iOS simulator, `a` for Android
 
+> **Phase 6+ (dev build required):** From Phase 6 onward the mobile app uses
+> `react-native-vision-camera` and `@shopify/react-native-skia`, which require
+> native module compilation and cannot run in Expo Go. Use a dev build instead:
+>
+> ```bash
+> # iOS simulator
+> cd apps/mobile && npx expo run:ios
+>
+> # Android emulator
+> cd apps/mobile && npx expo run:android
+>
+> # Rebuild native layer after adding a new native module
+> cd apps/mobile && npx expo prebuild --clean
+> ```
+>
+> Phases 1–5 still work with `pnpm dev` + Expo Go if you are only working on
+> those features. Expo Go is not supported for Phase 6 features (camera,
+> filters).
+
 ---
 
 ## Common commands
@@ -143,12 +162,12 @@ See [`docs/architecture.md`](docs/architecture.md) for the full technical specif
 Development follows the phased plan in `docs/architecture.md §20`. Current status:
 
 - [x] **Phase 0** — Repo & Tooling
-- [ ] Phase 1 — Backend Foundation
-- [ ] Phase 2 — Phone OTP Auth
-- [ ] Phase 3 — Mobile Foundation
-- [ ] Phase 4 — Rooms (Create, Join, Membership)
-- [ ] Phase 5 — Payments & Post-Event Paywall
-- [ ] Phase 6 — Photo Capture & Upload
+- [x] **Phase 1** — Backend Foundation
+- [x] **Phase 2** — Phone OTP Auth
+- [x] **Phase 3** — Mobile Foundation
+- [x] **Phase 4** — Rooms (Create, Join, Membership)
+- [x] **Phase 5** — Payments & Post-Event Paywall
+- [ ] Phase 6 — Photo Capture & Upload (in progress)
 - [ ] Phase 7 — Engagement & Downloads
 - [ ] Phase 8 — Lifecycle, Retention, Notifications
 - [ ] Phase 9 — Security Hardening
