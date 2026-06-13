@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import type { RoomSummaryDto } from '@sher/shared-types';
-import { EmptyState } from '../../components';
+import { Button, EmptyState } from '../../components';
 import { useRoomList } from '../../lib/rooms';
 import { colors, fonts, fontSizes, radii, spacing } from '../../theme';
 
@@ -110,6 +110,12 @@ export default function RoomsScreen() {
           />
         }
       />
+
+      {__DEV__ ? (
+        <View style={styles.devBanner}>
+          <Button label="Camera test" variant="ghost" onPress={() => router.push('/camera-test')} />
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -227,5 +233,9 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.caption,
     color: colors.cream,
     opacity: 0.3,
+  },
+  devBanner: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
 });

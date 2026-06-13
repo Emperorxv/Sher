@@ -99,3 +99,7 @@ When the user says "start Phase N", do the following:
 ## Constructor environment rule (rule 5)
 
 **Rule 5: Lazy env validation.** Provider constructors (and any `@Injectable()` that reads env vars at construction time) must **not** throw on a missing variable. Store the value as `string | null` in the constructor; validate and throw at the first method call that needs the key. This ensures NestJS can instantiate and inject providers in test environments where secrets are absent.
+
+## Spec compliance reporting (rule 6)
+
+**Rule 6: Spec compliance reporting.** When a commit prompt specifies multiple deliverables (e.g. install X AND create Y AND add tests), the commit report must explicitly confirm each deliverable landed, or flag the omission. Silent omission of required deliverables is the most expensive class of report-quality gap because it breaks downstream verification gates. The report mirrors the structure of the original prompt: one bullet per required deliverable, with explicit status (landed / deferred / omitted) for each.
