@@ -19,6 +19,8 @@ const mockCapturePhoto = jest.fn().mockResolvedValue({
   dispose: jest.fn(),
 });
 
+const mockDevice = { id: 'back', position: 'back' };
+
 jest.mock('react-native-vision-camera', () => ({
   useCameraPermission: jest.fn(() => ({
     hasPermission: true,
@@ -26,6 +28,7 @@ jest.mock('react-native-vision-camera', () => ({
     status: 'authorized',
     canRequestPermission: false,
   })),
+  useCameraDevice: jest.fn(() => mockDevice),
   usePhotoOutput: jest.fn(() => ({
     capturePhoto: mockCapturePhoto,
   })),
@@ -66,6 +69,8 @@ describe('CameraTestScreen', () => {
       status: 'authorized',
       canRequestPermission: false,
     });
+    // Reset device to back camera before each test.
+    (VisionCamera.useCameraDevice as jest.Mock).mockReturnValue(mockDevice);
   });
 
   it('renders without throwing when permission is granted', () => {
@@ -109,6 +114,23 @@ describe('CameraTestScreen', () => {
     it('does not call requestPermission when already granted', () => {
       renderScreen();
       expect(mockRequestPermission).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('no camera device available', () => {
+    beforeEach(() => {
+      // All three useCameraDevice positions return null (headless simulator).
+      (VisionCamera.useCameraDevice as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it('renders "No camera available" message instead of crashing', () => {
+      const { getByText } = renderScreen();
+      expect(getByText('No camera available on this device.')).toBeTruthy();
+    });
+
+    it('does not render the capture button when no device is available', () => {
+      const { queryByLabelText } = renderScreen();
+      expect(queryByLabelText('Capture photo')).toBeNull();
     });
   });
 });

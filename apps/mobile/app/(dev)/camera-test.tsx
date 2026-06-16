@@ -12,12 +12,18 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Camera, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  usePhotoOutput,
+} from 'react-native-vision-camera';
 import { colors, fonts, fontSizes, radii, spacing } from '../../theme';
 
 export default function CameraTestScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const photoOutput = usePhotoOutput();
+  const device = useCameraDevice('back') ?? useCameraDevice('front') ?? useCameraDevice('external');
   const [lastPath, setLastPath] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
 
@@ -57,9 +63,17 @@ export default function CameraTestScreen() {
     }
   };
 
+  if (device == null) {
+    return (
+      <View style={[styles.container, styles.centred]}>
+        <Text style={styles.message}>No camera available on this device.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Camera style={StyleSheet.absoluteFill} device="back" isActive outputs={[photoOutput]} />
+      <Camera style={StyleSheet.absoluteFill} device={device} isActive outputs={[photoOutput]} />
 
       {lastPath ? (
         <View style={styles.pathOverlayContainer}>
