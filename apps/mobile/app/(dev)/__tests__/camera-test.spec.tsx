@@ -28,12 +28,16 @@ jest.mock('react-native-vision-camera', () => ({
     status: 'authorized',
     canRequestPermission: false,
   })),
-  useCameraDevice: jest.fn(() => mockDevice),
   usePhotoOutput: jest.fn(() => ({
     capturePhoto: mockCapturePhoto,
   })),
   // Stub the native Camera view as a plain View so RNTL can render it.
   Camera: 'View',
+}));
+
+// lib/camera is mocked so useCameraDeviceWithFallback is fully controlled.
+jest.mock('../../../lib/camera', () => ({
+  useCameraDeviceWithFallback: jest.fn(() => mockDevice),
 }));
 
 jest.mock('expo-router', () => ({
@@ -46,6 +50,7 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 import * as VisionCamera from 'react-native-vision-camera';
+import * as CameraLib from '../../../lib/camera';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +75,7 @@ describe('CameraTestScreen', () => {
       canRequestPermission: false,
     });
     // Reset device to back camera before each test.
-    (VisionCamera.useCameraDevice as jest.Mock).mockReturnValue(mockDevice);
+    (CameraLib.useCameraDeviceWithFallback as jest.Mock).mockReturnValue(mockDevice);
   });
 
   it('renders without throwing when permission is granted', () => {
@@ -119,8 +124,8 @@ describe('CameraTestScreen', () => {
 
   describe('no camera device available', () => {
     beforeEach(() => {
-      // All three useCameraDevice positions return null (headless simulator).
-      (VisionCamera.useCameraDevice as jest.Mock).mockReturnValue(undefined);
+      // useCameraDeviceWithFallback returns null (headless simulator).
+      (CameraLib.useCameraDeviceWithFallback as jest.Mock).mockReturnValue(null);
     });
 
     it('renders "No camera available" message instead of crashing', () => {

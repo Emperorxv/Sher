@@ -116,6 +116,9 @@ export default function RoomDashboard() {
 
   const isHost = room?.hostId === userId;
   const isActive = room?.status === 'ACTIVE';
+  const callerUnlockState = unlockStatus?.callerUnlockState;
+  const canTakePhoto =
+    isActive && (callerUnlockState === 'UNLOCKED' || callerUnlockState === 'EXEMPT');
 
   // isLocked is false until unlockStatus loads; avoids flash for unlocked users
   const isLocked = unlockStatus?.callerUnlockState === 'LOCKED';
@@ -385,6 +388,17 @@ export default function RoomDashboard() {
           </View>
         )}
 
+        {/* Take photo — visible when active and caller is unlocked/exempt */}
+        {canTakePhoto && (
+          <Button
+            label="Take photo"
+            variant="primary"
+            onPress={() => router.push(`/rooms/${id}/camera`)}
+            style={styles.takePhotoBtn}
+            accessibilityLabel="Open camera to take a photo"
+          />
+        )}
+
         {/* Host actions */}
         {isHost && isActive && (
           <Button
@@ -559,6 +573,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: fontSizes.body2,
     color: colors.cream,
+  },
+  takePhotoBtn: {
+    marginTop: spacing.sm,
   },
   endBtn: {
     marginTop: spacing.sm,

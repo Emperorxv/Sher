@@ -12,18 +12,14 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  usePhotoOutput,
-} from 'react-native-vision-camera';
+import { Camera, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
+import { useCameraDeviceWithFallback } from '../../lib/camera';
 import { colors, fonts, fontSizes, radii, spacing } from '../../theme';
 
 export default function CameraTestScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const photoOutput = usePhotoOutput();
-  const device = useCameraDevice('back') ?? useCameraDevice('front') ?? useCameraDevice('external');
+  const device = useCameraDeviceWithFallback();
   const [lastPath, setLastPath] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
 
