@@ -81,6 +81,14 @@ jest.mock('../../lib/api', () => ({
   apiClient: { rooms: { pricing: jest.fn().mockResolvedValue(null) } },
 }));
 
+jest.mock('../../lib/photos', () => ({
+  usePhotos: jest.fn(() => ({
+    data: { data: [], meta: { locked: false, nextCursor: null } },
+    isLoading: false,
+  })),
+  photoKeys: { list: (id: string) => ['photos', 'list', id] },
+}));
+
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import React from 'react';
@@ -88,6 +96,7 @@ import { render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { subscribeToRoom } from '../../lib/socket';
 import type { RoomSocketEvents } from '../../lib/socket';
+import { photoKeys } from '../../lib/photos';
 
 // CI runners are 5–10× slower than local hardware. Every test in this file
 // awaits a socket-subscription handshake; 15 s is 3× the worst observed local
@@ -211,6 +220,23 @@ describe('RoomDashboard socket → query invalidation', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
     expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.detail(ROOM_ID) });
     expect(mockRouterReplace).not.toHaveBeenCalledWith('/rooms');
+  });
+
+  it('photo:new invalidates photoKeys.list for the current room', async () => {
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    await renderAndWaitForSubscription(qc);
+
+    capturedHandlers['photo:new']?.({
+      photoId: 'photo-new-1',
+      thumbUrl: 'https://r2.example.com/thumb/photo-new-1.jpg',
+      uploaderId: 'user-1',
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: photoKeys.list(ROOM_ID) });
+    // Must NOT invalidate member or room-detail keys (photo events don't change member count)
+    expect(spy).not.toHaveBeenCalledWith({ queryKey: ['rooms', 'members', ROOM_ID] });
+    expect(spy).not.toHaveBeenCalledWith({ queryKey: ['rooms', 'detail', ROOM_ID] });
   });
 
   /**

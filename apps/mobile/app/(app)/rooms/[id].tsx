@@ -22,12 +22,7 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@sher/shared-types';
-import {
-  Button,
-  JoinCodeDisplay,
-  PaywallSheet,
-  LockedGalleryPlaceholder,
-} from '../../../components';
+import { Button, JoinCodeDisplay, PaywallSheet, PhotoGallery } from '../../../components';
 import {
   useRoom,
   useRoomMembers,
@@ -41,6 +36,7 @@ import {
   useInitiateBaseUnlock,
   useInitiateMemberUnlock,
 } from '../../../lib/payments';
+import { photoKeys } from '../../../lib/photos';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
 import { useAuthStore } from '../../../stores/auth';
@@ -129,8 +125,6 @@ export default function RoomDashboard() {
   const paywallPurpose: 'BASE_UNLOCK' | 'MEMBER_UNLOCK' = isExtraMember
     ? 'MEMBER_UNLOCK'
     : 'BASE_UNLOCK';
-  const showLockedPlaceholder = showPaywall && !isHost && !isExtraMember;
-
   const paywallPricing =
     paywallPurpose === 'BASE_UNLOCK'
       ? {
@@ -192,6 +186,9 @@ export default function RoomDashboard() {
         },
         'payment:failed': () => {
           setPaymentFailedMsg('Payment failed. Please try again.');
+        },
+        'photo:new': () => {
+          void qc.invalidateQueries({ queryKey: photoKeys.list(id) });
         },
       });
     });
@@ -373,13 +370,12 @@ export default function RoomDashboard() {
           />
         </View>
 
-        {/* Locked gallery placeholder (within-capacity members waiting for host to pay) */}
-        {showLockedPlaceholder && (
-          <LockedGalleryPlaceholder
-            photoCount={room.photoCount || 10}
-            onUnlockPress={() => setPaywallOpen(true)}
-          />
-        )}
+        {/* Photo gallery — handles locked / empty / grid states internally */}
+        <PhotoGallery
+          roomId={id ?? ''}
+          photoCount={room.photoCount || 10}
+          onUnlockPress={() => setPaywallOpen(true)}
+        />
 
         {/* Payment failed non-blocking toast */}
         {paymentFailedMsg && (

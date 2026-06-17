@@ -74,6 +74,14 @@ jest.mock('../../lib/token-store', () => ({
   tokenStore: { getAccess: jest.fn().mockResolvedValue('test-token') },
 }));
 
+jest.mock('../../lib/photos', () => ({
+  usePhotos: jest.fn(() => ({
+    data: { data: [], meta: { locked: true, nextCursor: null } },
+    isLoading: false,
+  })),
+  photoKeys: { list: (id: string) => ['photos', 'list', id] },
+}));
+
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import React from 'react';

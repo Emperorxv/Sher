@@ -5,4 +5,5 @@ export { ExtraMemberSheet } from './ExtraMemberSheet';
 export { JoinCodeDisplay } from './JoinCodeDisplay';
 export { LockedGalleryPlaceholder } from './LockedGalleryPlaceholder';
 export { PaywallSheet } from './PaywallSheet';
+export { PhotoGallery } from './PhotoGallery';
 export { Sticker } from './Sticker';
