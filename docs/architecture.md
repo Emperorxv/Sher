@@ -513,7 +513,7 @@ All responses follow:
 - Auth: JWT in `auth.token` on handshake
 - Rooms (Socket.IO rooms) mirror DB rooms: `room:{roomId}`
 - Events emitted to clients:
-  - `photo:new` — `{ photoId, thumbUrl, uploader }`
+  - `photo:new` — `{ photoId, thumbUrl, uploaderId }`
   - `photo:deleted` — `{ photoId }`
   - `member:joined` — `{ user }`
   - `member:left` — `{ userId }`
