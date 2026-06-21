@@ -7,19 +7,29 @@
  *   empty     — "No photos yet." when unlocked with no photos.
  *   populated — thumbnail grid rendered for each photo with a thumbUrl.
  *   pending   — placeholder tile rendered for photos without a thumbUrl.
+ *   navigation — tapping a tile calls router.push with the correct photo path.
  */
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
 
+const mockRouterPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: jest.fn(() => ({ push: mockRouterPush, replace: jest.fn(), back: jest.fn() })),
+}));
+
 jest.mock('../../lib/photos', () => ({
   usePhotos: jest.fn(),
-  photoKeys: { list: (id: string) => ['photos', 'list', id] },
+  photoKeys: {
+    list: (roomId: string) => ['rooms', roomId, 'photos'],
+    detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],
+  },
 }));
 
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { usePhotos } from '../../lib/photos';
 import { PhotoGallery } from '../PhotoGallery';
 import type { PhotoListResponseDto } from '@sher/shared-types';
@@ -60,7 +70,9 @@ const EMPTY: PhotoListResponseDto = {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('PhotoGallery', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('shows a loading spinner while fetching', () => {
     mockUsePhotos.mockReturnValue({ data: undefined, isLoading: true });
@@ -110,5 +122,12 @@ describe('PhotoGallery', () => {
     mockUsePhotos.mockReturnValue({ data: pending, isLoading: false });
     const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
     expect(getByTestId('photo-pending-photo-pending')).toBeTruthy();
+  });
+
+  it('tapping a photo tile calls router.push with the correct path', () => {
+    mockUsePhotos.mockReturnValue({ data: PHOTOS, isLoading: false });
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
+    fireEvent.press(getByTestId('photo-tile-photo-1'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/rooms/room-1/photo/photo-1');
   });
 });

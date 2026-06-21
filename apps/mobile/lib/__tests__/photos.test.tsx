@@ -2,8 +2,10 @@
  * Tests for lib/photos.ts
  *
  * Covers:
- *   photoKeys.list  — returns the correct query key tuple.
- *   usePhotos       — fetches first page; enabled only when roomId is non-empty.
+ *   photoKeys.list   — returns the correct query key tuple.
+ *   photoKeys.detail — returns the correct scoped key tuple.
+ *   usePhotos        — fetches first page; enabled only when roomId is non-empty.
+ *   usePhoto         — fetches a single photo; enabled only when both ids are set.
  */
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
@@ -12,6 +14,7 @@ jest.mock('../api', () => ({
   apiClient: {
     photos: {
       list: jest.fn(),
+      get: jest.fn(),
     },
   },
 }));
@@ -22,10 +25,11 @@ import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { apiClient } from '../api';
-import { usePhotos, photoKeys } from '../photos';
-import type { PhotoListResponseDto } from '@sher/shared-types';
+import { usePhotos, usePhoto, photoKeys } from '../photos';
+import type { PhotoDetailDto, PhotoListResponseDto } from '@sher/shared-types';
 
 const mockList = apiClient.photos.list as jest.Mock;
+const mockGet = apiClient.photos.get as jest.Mock;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -60,15 +64,31 @@ const LOCKED_RESPONSE: PhotoListResponseDto = {
   meta: { locked: true, nextCursor: null },
 };
 
+const DETAIL_RESPONSE: PhotoDetailDto = {
+  ...PHOTO_ITEM,
+  originalUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg',
+};
+
 // ── photoKeys ─────────────────────────────────────────────────────────────────
 
 describe('photoKeys', () => {
   it('list returns the correct key tuple', () => {
-    expect(photoKeys.list('room-1')).toEqual(['photos', 'list', 'room-1']);
+    expect(photoKeys.list('room-1')).toEqual(['rooms', 'room-1', 'photos']);
   });
 
   it('list is distinct for different room IDs', () => {
     expect(photoKeys.list('room-a')).not.toEqual(photoKeys.list('room-b'));
+  });
+
+  it('detail returns the correct scoped key tuple', () => {
+    expect(photoKeys.detail('room-1', 'photo-1')).toEqual(['rooms', 'room-1', 'photos', 'photo-1']);
+  });
+
+  it('detail key is a child of the list key (enables hierarchical invalidation)', () => {
+    const list = photoKeys.list('room-1');
+    const detail = photoKeys.detail('room-1', 'photo-1');
+    // detail starts with all segments of list
+    expect(detail.slice(0, list.length)).toEqual([...list]);
   });
 });
 
@@ -108,5 +128,52 @@ describe('usePhotos', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data).toBeUndefined();
     expect(mockList).not.toHaveBeenCalled();
+  });
+});
+
+// ── usePhoto ──────────────────────────────────────────────────────────────────
+
+describe('usePhoto', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('fetches a single photo and returns PhotoDetailDto', async () => {
+    mockGet.mockResolvedValue(DETAIL_RESPONSE);
+    const { result } = renderHook(() => usePhoto('room-1', 'photo-1'), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toEqual(DETAIL_RESPONSE);
+    expect(mockGet).toHaveBeenCalledWith('room-1', 'photo-1');
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the API error on failure', async () => {
+    const err = new Error('not found');
+    mockGet.mockRejectedValue(err);
+    const { result } = renderHook(() => usePhoto('room-1', 'photo-1'), { wrapper });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error).toBe(err);
+  });
+
+  it('is disabled when roomId is empty', () => {
+    mockGet.mockResolvedValue(DETAIL_RESPONSE);
+    const { result } = renderHook(() => usePhoto('', 'photo-1'), { wrapper });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it('is disabled when photoId is empty', () => {
+    mockGet.mockResolvedValue(DETAIL_RESPONSE);
+    const { result } = renderHook(() => usePhoto('room-1', ''), { wrapper });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

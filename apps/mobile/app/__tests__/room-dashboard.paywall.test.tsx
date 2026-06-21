@@ -79,7 +79,10 @@ jest.mock('../../lib/photos', () => ({
     data: { data: [], meta: { locked: true, nextCursor: null } },
     isLoading: false,
   })),
-  photoKeys: { list: (id: string) => ['photos', 'list', id] },
+  photoKeys: {
+    list: (roomId: string) => ['rooms', roomId, 'photos'],
+    detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],
+  },
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
