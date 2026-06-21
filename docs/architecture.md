@@ -1605,6 +1605,48 @@ Feed Claude Code **one phase at a time**. Each phase has explicit deliverables, 
 - Tests: queue resumes after kill, retry exhausts gracefully, MIME spoof rejected, oversize rejected, plan cap enforced.
   **Done when:** Two devices capture simultaneously; both see each other's photos within seconds; killing the app mid-upload resumes on relaunch.
 
+**Status: complete — tagged `phase-6-complete` (June 2026)**
+
+11 main commits + 5 follow-on fixes:
+
+- Commit 1: dev-build transition + expo-build-properties
+- Commit 2: R2 StorageService with presigned PUT/GET URL flow
+- Commit 3: Photos API (getUploadUrl, commit, listPhotos, getPhoto)
+- Commit 4: photo processing worker (sharp, thumb + medium variants, EXIF strip)
+- Commit 5: retention purge processor (+5b lint fix)
+- Commit 6: shared-types photos + api-client photos namespace (+6b dedup cleanup)
+- Commit 7: Vision Camera v5 + Skia install + permissions (+7b arch doc, +7c camera-test screen)
+- Commit 8: camera capture screen + R2 upload pipeline
+- Commit 9: photo gallery with socket live updates (+photoCount default fix)
+- Commit 10: photo detail screen + tile navigation
+- Commit 11: real-DB integration tests for upload pipeline + error code alignment
+
+Test growth (Phase 5 → Phase 6 tag):
+
+- API: 438 → 444 tests
+- Mobile: 137 → 204 tests
+- Packages (config + api-client): 21 → 45 tests
+
+Discipline rules added this phase:
+
+- **Rule 4 (revised):** `pnpm lint` added as third mandatory gate (was test + typecheck only)
+- **Rule 6:** spec compliance reporting required per deliverable — each commit report mirrors the prompt structure with explicit landed/deferred/omitted status
+
+Drift caught and corrected (none shipped):
+
+- Commit 5: `as any` → `as never` lint violation
+- Commit 6: duplicate PhotoDto fields
+- Commit 7: camera-test screen omitted from initial delivery, recovered via follow-on
+- Commit 9: `photoCount || 10` debug fallback left in dashboard
+- Commit 11 (follow-on): API throws `FILE_TOO_LARGE`/`INVALID_MIME`; mobile switch had `PHOTO_TOO_LARGE`/`UNSUPPORTED_FORMAT` — two dead branches, wrong user messages. Corrected by aligning mobile to API names.
+
+Manual verification deferred (see `TODO-manual.md`):
+
+- Full photo capture flow on real device (Vision Camera native module)
+- R2 upload with real image data
+- Visual gallery tile and detail screen rendering
+- Webhook delivery via stable production URL
+
 ### Phase 6.5 — Snap Camera Kit Integration
 
 Depends on: Phase 6 complete (baseline camera + dev-build transition); Snap
@@ -1744,6 +1786,15 @@ Out of scope (tracked in backlog, post-MVP):
 ---
 
 ## 24. Changelog
+
+**v2.2 — Phase 6 complete (June 2026)**
+
+- Phase 6 (Photo Capture & Upload) completed and tagged `phase-6-complete`.
+- §10 Photo Storage & Processing: added "Photo upload error codes" table pinning the seven API↔mobile error code mappings as a contract.
+- §21 Phase 6 status block: marked complete, added retrospective (commits, test growth, discipline rules, drift log, deferred manual verification).
+- Error code alignment: `PHOTO_TOO_LARGE` → `FILE_TOO_LARGE`, `UNSUPPORTED_FORMAT` → `INVALID_MIME` throughout mobile and tests.
+- Rule 4 extended: `pnpm lint` added as mandatory third gate.
+- Rule 6 added: spec compliance reporting per deliverable.
 
 **v2.1 — Email required at signup**
 
