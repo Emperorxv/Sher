@@ -85,16 +85,14 @@ describe('mapUploadError', () => {
     );
   });
 
-  it('maps PHOTO_TOO_LARGE', () => {
-    expect(mapUploadError(new ApiError(413, 'PHOTO_TOO_LARGE', ''))).toBe(
+  it('maps FILE_TOO_LARGE', () => {
+    expect(mapUploadError(new ApiError(400, 'FILE_TOO_LARGE', ''))).toBe(
       'Photo too large. Maximum 25MB.',
     );
   });
 
-  it('maps UNSUPPORTED_FORMAT', () => {
-    expect(mapUploadError(new ApiError(415, 'UNSUPPORTED_FORMAT', ''))).toBe(
-      'Unsupported image format.',
-    );
+  it('maps INVALID_MIME', () => {
+    expect(mapUploadError(new ApiError(400, 'INVALID_MIME', ''))).toBe('Unsupported image format.');
   });
 
   it('maps UPLOAD_FAILED (from PUT non-ok)', () => {

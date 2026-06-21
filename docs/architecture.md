@@ -885,6 +885,20 @@ Successful payments trigger an email receipt via Resend (transactional — alway
 4. Client PUTs the file directly to R2 (does not transit through API). On success, calls `POST /commit`.
 5. API enqueues a `process-photo` job in BullMQ.
 
+### Photo upload error codes
+
+Codes thrown by `PhotosService.getUploadUrl` and `commit`; mapped in the mobile `mapUploadError` helper.
+
+| Code                    | HTTP | User-facing string (mobile)                 |
+| ----------------------- | ---- | ------------------------------------------- |
+| `ROOM_LOCKED`           | 403  | This room is locked. Unlock to take photos. |
+| `ROOM_ENDED`            | 400  | This room has ended. No new photos allowed. |
+| `FILE_TOO_LARGE`        | 400  | Photo too large. Maximum 25MB.              |
+| `INVALID_MIME`          | 400  | Unsupported image format.                   |
+| `UPLOAD_FAILED`         | 500  | Upload failed. Tap retry.                   |
+| (network / `TypeError`) | —    | Connection lost. Check your network.        |
+| (unknown)               | —    | Couldn't take photo. Try again.             |
+
 ### Post-processing worker
 
 For each photo:

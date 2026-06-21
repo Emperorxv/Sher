@@ -96,9 +96,9 @@ export function mapUploadError(err: unknown): string {
         return 'This room is locked. Unlock to take photos.';
       case 'ROOM_ENDED':
         return 'This room has ended. No new photos allowed.';
-      case 'PHOTO_TOO_LARGE':
+      case 'FILE_TOO_LARGE':
         return 'Photo too large. Maximum 25MB.';
-      case 'UNSUPPORTED_FORMAT':
+      case 'INVALID_MIME':
         return 'Unsupported image format.';
       case 'UPLOAD_FAILED':
         return 'Upload failed. Tap retry.';
