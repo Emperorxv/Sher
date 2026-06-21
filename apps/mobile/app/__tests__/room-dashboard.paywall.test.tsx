@@ -433,6 +433,27 @@ describe('socket → query invalidation (payment events)', () => {
   });
 });
 
+// ── photoCount regression ─────────────────────────────────────────────────────
+
+describe('photoCount prop', () => {
+  it('passes room.photoCount exactly to LockedGalleryPlaceholder — no fallback to 10', async () => {
+    // Use a count that differs from the old || 10 fallback so the test catches a regression.
+    const ROOM_5 = { ...ENDED_ROOM, photoCount: 5 };
+    mockUseRoom.mockReturnValue({ data: ROOM_5, isLoading: false });
+    // User is within base capacity (not auto-opened host), so paywall sheet stays closed
+    // and we can see the LockedGalleryPlaceholder tiles directly.
+    mockUseAuthStore.mockReturnValue({ user: { id: 'user-base-1' } });
+    mockUseRoomMembers.mockReturnValue({ data: { items: BASE_MEMBERS, total: 2 } });
+    mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'LOCKED' } });
+
+    const qc = makeQc();
+    const { getAllByLabelText, queryByTestId } = await renderAndWaitForSubscription(qc);
+
+    await waitFor(() => expect(getAllByLabelText('locked')).toHaveLength(5));
+    expect(queryByTestId('locked-tile-5')).toBeNull();
+  });
+});
+
 // ── Error path ────────────────────────────────────────────────────────────────
 
 describe('error path', () => {

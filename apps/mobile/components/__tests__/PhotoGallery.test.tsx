@@ -82,10 +82,10 @@ describe('PhotoGallery', () => {
     expect(getAllByTestId(/^locked-tile-/).length).toBe(3);
   });
 
-  it('defaults to 10 placeholder tiles when photoCount is omitted', () => {
+  it('defaults to 0 placeholder tiles when photoCount is omitted', () => {
     mockUsePhotos.mockReturnValue({ data: LOCKED, isLoading: false });
-    const { getAllByTestId } = render(<PhotoGallery roomId="room-1" />);
-    expect(getAllByTestId(/^locked-tile-/).length).toBe(10);
+    const { queryAllByTestId } = render(<PhotoGallery roomId="room-1" />);
+    expect(queryAllByTestId(/^locked-tile-/).length).toBe(0);
   });
 
   it('shows empty state text when unlocked but no photos', () => {

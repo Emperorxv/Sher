@@ -27,7 +27,6 @@ const COLUMNS = 3;
 
 export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGalleryProps) {
   const { data, isLoading } = usePhotos(roomId);
-
   if (isLoading) {
     return (
       <View style={styles.loading} testID="gallery-loading">
@@ -37,7 +36,7 @@ export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGallery
   }
 
   if (data?.meta.locked) {
-    return <LockedGalleryPlaceholder photoCount={photoCount ?? 10} onUnlockPress={onUnlockPress} />;
+    return <LockedGalleryPlaceholder photoCount={photoCount ?? 0} onUnlockPress={onUnlockPress} />;
   }
 
   if (!data?.data.length) {

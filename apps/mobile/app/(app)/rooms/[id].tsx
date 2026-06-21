@@ -373,7 +373,7 @@ export default function RoomDashboard() {
         {/* Photo gallery — handles locked / empty / grid states internally */}
         <PhotoGallery
           roomId={id ?? ''}
-          photoCount={room.photoCount || 10}
+          photoCount={room.photoCount ?? 0}
           onUnlockPress={() => setPaywallOpen(true)}
         />
 
