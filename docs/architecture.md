@@ -949,6 +949,10 @@ For each photo:
 
 ## 12. Camera & AR Filters (Snap Camera Kit)
 
+> **STATUS: Deferred. Not part of the current roadmap. Sher ships with native
+> camera capture only (Phase 6). This section is preserved for reference if AR
+> filters are revisited in the future.**
+
 ### 12.1 Scope
 
 Sher exposes a "Filters" mode on the capture screen. Tapping it switches the
@@ -1647,7 +1651,11 @@ Manual verification deferred (see `TODO-manual.md`):
 - Visual gallery tile and detail screen rendering
 - Webhook delivery via stable production URL
 
-### Phase 6.5 — Snap Camera Kit Integration
+### Phase 6.5 — Snap Camera Kit Integration _(CANCELLED / DEFERRED)_
+
+> **CANCELLED.** Sher ships with native camera capture only (Vision Camera,
+> Phase 6). Phase 6.5 is removed from the active roadmap. The Snap Camera Kit
+> section (§ 12) is preserved for reference only.
 
 Depends on: Phase 6 complete (baseline camera + dev-build transition); Snap
 Camera Kit approval granted; Camera Kit ToS review filed (§ 12.10).
