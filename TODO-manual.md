@@ -28,3 +28,28 @@ Deferred — requires physical device or webcam-enabled simulator:
 Prerequisite: either a physical iOS/Android device attached to Xcode/ADB, or a
 macOS simulator with "Use Camera" (webcam passthrough) enabled under Features menu.
 Also requires a running API + R2 instance (docker compose up -d + pnpm dev).
+
+---
+
+## Phase 6 verification — pending real device or test image upload
+
+Verified on simulator / unit tests (commits 8–10, CI green):
+
+- ✓ Gallery tile navigation calls `router.push('/rooms/<id>/photo/<photoId>')` (unit test)
+- ✓ Photo detail screen loading/error/success states render correctly (unit test)
+- ✓ photoCount defaults fixed (0 not 10)
+
+Deferred — blocked on either (a) uploading a placeholder JPEG to R2 at the test
+paths used in seed data, or (b) testing the full capture-and-upload flow on a
+real device:
+
+- [ ] Visually confirm gallery tile renders a thumbnail image (currently blank — test
+      photo's R2 keys point to non-existent objects)
+- [ ] Visually confirm tapping a gallery tile navigates to the photo detail screen
+      (needs a renderable tile to tap)
+- [ ] Visually confirm photo detail screen renders the full-resolution image (same
+      dependency — needs a real or uploaded test image at the R2 originalUrl)
+
+Unblocking options:
+A. Upload a placeholder JPEG to R2 at the seed data paths (one-time manual step)
+B. Run the full capture-and-upload flow on a real device (see commit 8 checklist)
