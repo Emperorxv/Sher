@@ -68,7 +68,7 @@ describe('VerifyScreen — requestOtp call discipline', () => {
     mockRequestOtp.mockClear();
     mockVerifyOtp.mockClear();
     mockRequestOtp.mockResolvedValue({ challengeId: 'ch-new' });
-    mockVerifyOtp.mockResolvedValue(undefined);
+    mockVerifyOtp.mockResolvedValue({ needsAgeGate: false });
   });
 
   it('does NOT call requestOtp on mount', () => {
@@ -113,7 +113,7 @@ describe('VerifyScreen — wrong code then correct code succeeds (Bug B)', () =>
       new ApiError(401, 'UNAUTHORIZED', 'OTP_WRONG_CODE: Incorrect code.'),
     );
     // Second call: correct code → resolve
-    mockVerifyOtp.mockResolvedValueOnce(undefined);
+    mockVerifyOtp.mockResolvedValueOnce({ needsAgeGate: false });
 
     const { getByLabelText, getByText } = renderVerify();
     const input = getByLabelText('One-time code');

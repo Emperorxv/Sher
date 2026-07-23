@@ -25,11 +25,9 @@ export interface AuthTokensDto {
 }
 
 /** Server response after verifying an OTP */
-export interface VerifyOtpResponseDto {
-  tokens: AuthTokensDto;
-  user: UserDto;
-  isNewUser: boolean;
-}
+export type VerifyOtpResponseDto =
+  | { isNewUser: false; tokens: AuthTokensDto; user: UserDto }
+  | { isNewUser: true; signupTicket: string };
 
 /** Payload to complete sign-up after the age-gate screen (new users only). */
 export interface CompleteSignupDto {

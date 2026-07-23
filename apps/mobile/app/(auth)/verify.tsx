@@ -64,9 +64,12 @@ export default function VerifyScreen() {
     setError(null);
     setLoading(true);
     try {
-      await verifyOtp(challengeId, value, email.trim() || undefined);
-      // On success the auth store sets tokens; navigate to main app.
-      router.replace('/(app)/rooms');
+      const { needsAgeGate } = await verifyOtp(challengeId, value, email.trim() || undefined);
+      if (needsAgeGate) {
+        router.replace('/(auth)/age-gate');
+      } else {
+        router.replace('/(app)/rooms');
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError('Wrong code. Double-check and try again.');

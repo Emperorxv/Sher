@@ -1,5 +1,7 @@
 import type {
   AuthTokensDto,
+  CompleteSignupDto,
+  CompleteSignupResponseDto,
   CreateRoomDto,
   CreateRoomResponseDto,
   GetUploadUrlBodyDto,
@@ -131,6 +133,13 @@ export function createApiClient(opts: ApiClientOptions) {
 
     verifyOtp: (dto: OtpVerifyDto) =>
       rawFetch<VerifyOtpResponseDto>('/v1/auth/otp/verify', {
+        method: 'POST',
+        body: dto,
+        skipAuth: true,
+      }),
+
+    completeSignup: (dto: CompleteSignupDto) =>
+      rawFetch<CompleteSignupResponseDto>('/v1/auth/complete-signup', {
         method: 'POST',
         body: dto,
         skipAuth: true,
