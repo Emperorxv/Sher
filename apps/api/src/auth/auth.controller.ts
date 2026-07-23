@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import { AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
+import { CompleteSignupDto } from './dto/complete-signup.dto';
 import { EmailVerifyDto } from './dto/email-verify.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { OtpRequestDto } from './dto/otp-request.dto';
@@ -44,6 +45,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   verifyOtp(@Body() dto: OtpVerifyDto) {
     return this.auth.verifyOtp(dto);
+  }
+
+  @Public()
+  @Post('complete-signup')
+  @HttpCode(HttpStatus.OK)
+  completeSignup(@Body() dto: CompleteSignupDto) {
+    return this.auth.completeSignup(dto);
   }
 
   @Public()

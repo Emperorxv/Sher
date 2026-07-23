@@ -1,9 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CompleteSignupDto } from './dto/complete-signup.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { EmailVerifyService } from './email/email-verify.service';
 import { OtpService } from './otp/otp.service';
+import { SignupTicketService } from './token/signup-ticket.service';
 import { RefreshTokenService } from './token/refresh-token.service';
 import { TokenService } from './token/token.service';
 
@@ -13,10 +15,19 @@ export interface TokenPair {
   refreshExpiresAt: Date;
 }
 
-export interface VerifyOtpResult {
+type UserSnapshot = Pick<
+  User,
+  'id' | 'phone' | 'email' | 'emailVerified' | 'displayName' | 'avatarUrl'
+>;
+
+export type VerifyOtpResult =
+  | { isNewUser: false; tokens: TokenPair; user: UserSnapshot }
+  | { isNewUser: true; signupTicket: string };
+
+export interface CompleteSignupResult {
+  isNewUser: true;
   tokens: TokenPair;
-  user: Pick<User, 'id' | 'phone' | 'email' | 'emailVerified' | 'displayName' | 'avatarUrl'>;
-  isNewUser: boolean;
+  user: UserSnapshot;
 }
 
 @Injectable()
@@ -27,6 +38,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly emailVerify: EmailVerifyService,
+    private readonly signupTickets: SignupTicketService,
   ) {}
 
   async requestOtp(phone: string): Promise<{ challengeId: string }> {
@@ -37,35 +49,29 @@ export class AuthService {
     const { phone } = await this.otp.verifyOtp(dto.challengeId, dto.code);
 
     const existing = await this.prisma.user.findUnique({ where: { phone } });
-    const isNewUser = !existing;
 
-    if (isNewUser && !dto.email) {
-      throw new BadRequestException({
-        code: 'EMAIL_REQUIRED',
-        message: 'Email is required to create your account.',
-      });
+    if (!existing) {
+      // New user: require email now (fail early, before the age-gate step)
+      if (!dto.email) {
+        throw new BadRequestException({
+          code: 'EMAIL_REQUIRED',
+          message: 'Email is required to create your account.',
+        });
+      }
+      // Defer account creation to completeSignup — issue a short-lived ticket instead.
+      const signupTicket = this.signupTickets.issue(phone);
+      return { isNewUser: true, signupTicket };
     }
 
-    let user: User;
-    if (isNewUser) {
-      user = await this.prisma.user.create({
-        data: {
-          phone,
-          email: dto.email as string, // guarded by isNewUser && !dto.email check above
-          marketingConsent: dto.marketingConsent ?? false,
-        },
-      });
-      await this.emailVerify.sendVerification(user.id, user.email);
-    } else {
-      user = existing;
-    }
-
+    // Returning user: issue tokens immediately.
+    const user = existing;
     const accessToken = this.tokens.signAccessToken(user.id, user.phone);
     const { raw: refreshToken, expiresAt: refreshExpiresAt } = await this.refreshTokens.issue(
       user.id,
     );
 
     return {
+      isNewUser: false,
       tokens: { accessToken, refreshToken, refreshExpiresAt },
       user: {
         id: user.id,
@@ -75,7 +81,75 @@ export class AuthService {
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
       },
-      isNewUser,
+    };
+  }
+
+  async completeSignup(dto: CompleteSignupDto): Promise<CompleteSignupResult> {
+    const { phone } = this.signupTickets.verify(dto.signupTicket);
+
+    const currentYear = new Date().getFullYear();
+    if (dto.birthYear > currentYear) {
+      throw new BadRequestException({
+        code: 'INVALID_BIRTH_YEAR',
+        message: 'Birth year cannot be in the future.',
+      });
+    }
+
+    const age = currentYear - dto.birthYear;
+
+    if (age < 13) {
+      // Log anonymised metric (no PII) then block.
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: null,
+          action: 'SIGNUP_BLOCKED_UNDERAGE',
+          entity: 'AgeGate',
+          metadata: {},
+        },
+      });
+      throw new ForbiddenException({
+        code: 'UNDERAGE',
+        message: 'Sher is only available to users aged 13 and older.',
+      });
+    }
+
+    if (age <= 17 && !dto.parentalConsentConfirmed) {
+      throw new BadRequestException({
+        code: 'MINOR_CONSENT_REQUIRED',
+        message: 'Parental or guardian consent is required for users under 18.',
+      });
+    }
+
+    const user = await this.prisma.user.create({
+      data: {
+        phone,
+        email: dto.email,
+        marketingConsent: dto.marketingConsent ?? false,
+        birthYear: dto.birthYear,
+        ageConfirmedAt: new Date(),
+        // Only store true for minors who checked the consent box; always false for 18+.
+        parentalConsentConfirmed: age <= 17 ? true : false,
+      },
+    });
+
+    await this.emailVerify.sendVerification(user.id, user.email);
+
+    const accessToken = this.tokens.signAccessToken(user.id, user.phone);
+    const { raw: refreshToken, expiresAt: refreshExpiresAt } = await this.refreshTokens.issue(
+      user.id,
+    );
+
+    return {
+      isNewUser: true,
+      tokens: { accessToken, refreshToken, refreshExpiresAt },
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      },
     };
   }
 

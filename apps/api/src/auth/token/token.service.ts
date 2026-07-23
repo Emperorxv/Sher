@@ -20,7 +20,14 @@ export class TokenService {
   }
 
   verifyAccessToken(token: string): AccessTokenPayload {
-    return this.jwt.verify<AccessTokenPayload>(token);
+    // Use an intersection type so we can check for `purpose` before accepting the token.
+    // Tokens issued for non-auth purposes (age-gate, email_verify) carry a `purpose` claim
+    // and must never be accepted as access tokens.
+    const payload = this.jwt.verify<AccessTokenPayload & { purpose?: string }>(token);
+    if (payload.purpose !== undefined) {
+      throw new Error('TOKEN_WRONG_PURPOSE');
+    }
+    return payload;
   }
 
   signEmailVerifyToken(userId: string, email: string): string {

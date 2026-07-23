@@ -27,6 +27,7 @@
 import { ConflictException } from '@nestjs/common';
 import { DevOtpStore } from '../../dev/dev-otp.store';
 import { AuthService } from '../auth.service';
+import { CompleteSignupDto } from '../dto/complete-signup.dto';
 import { OtpVerifyDto } from '../dto/otp-verify.dto';
 
 // ── 1. DevOtpStore per-phone isolation ──────────────────────────────────────
@@ -137,6 +138,7 @@ function makeMockPrisma() {
           ),
       ),
     },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
   };
 }
 
@@ -146,6 +148,7 @@ describe('AuthService — two phones produce distinct users and distinct JWT sub
   let mockTokens: { signAccessToken: jest.Mock };
   let mockRefreshTokens: { issue: jest.Mock };
   let mockEmailVerify: { sendVerification: jest.Mock };
+  let mockSignupTickets: { issue: jest.Mock; verify: jest.Mock };
   let service: AuthService;
 
   const issuedTokens: Array<{ userId: string; accessToken: string }> = [];
@@ -174,6 +177,13 @@ describe('AuthService — two phones produce distinct users and distinct JWT sub
 
     mockEmailVerify = { sendVerification: jest.fn().mockResolvedValue(undefined) };
 
+    // SignupTicketService: issue embeds the phone in the ticket value; verify
+    // parses it back. This lets the two-step flow route each phone correctly.
+    mockSignupTickets = {
+      issue: jest.fn((phone: string) => `ticket-for-${phone}`),
+      verify: jest.fn((ticket: string) => ({ phone: ticket.replace('ticket-for-', '') })),
+    };
+
     // OTP service returns the phone that was used to create the challenge —
     // this is what the real OtpService does after a successful code verification.
     mockOtp = {
@@ -187,14 +197,25 @@ describe('AuthService — two phones produce distinct users and distinct JWT sub
       mockTokens as never,
       mockRefreshTokens as never,
       mockEmailVerify as never,
+      mockSignupTickets as never,
     );
   });
 
   async function signIn(phone: string, email: string): Promise<string> {
+    // Step 1: OTP verify → signup ticket (new-user two-step flow)
     mockOtp.verifyOtp.mockResolvedValueOnce({ phone });
     const dto: OtpVerifyDto = { challengeId: `chal-for-${phone}`, code: '123456', email };
-    const result = await service.verifyOtp(dto);
-    return result.tokens.accessToken;
+    const verifyResult = await service.verifyOtp(dto);
+    if (!verifyResult.isNewUser) throw new Error('Expected new user in signIn helper');
+
+    // Step 2: Complete signup → create user and get tokens
+    const completeDto: CompleteSignupDto = {
+      signupTicket: verifyResult.signupTicket,
+      email,
+      birthYear: 1990, // adult (age 36), no parental consent needed
+    };
+    const completeResult = await service.completeSignup(completeDto);
+    return completeResult.tokens.accessToken;
   }
 
   it('creates a distinct User record for each phone', async () => {

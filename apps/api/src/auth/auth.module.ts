@@ -11,6 +11,7 @@ import { TermiiClient } from './otp/termii.client';
 import { TermiiMockClient } from './otp/termii-mock.client';
 import { OtpService } from './otp/otp.service';
 import { RefreshTokenService } from './token/refresh-token.service';
+import { SignupTicketService } from './token/signup-ticket.service';
 import { TokenService } from './token/token.service';
 
 function readPemKey(envVar: string): string {
@@ -35,6 +36,7 @@ function readPemKey(envVar: string): string {
     TermiiClient,
     TermiiMockClient,
     TokenService,
+    SignupTicketService,
     RefreshTokenService,
     EmailVerifyService,
     JwtAuthGuard,

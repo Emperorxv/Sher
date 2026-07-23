@@ -31,6 +31,25 @@ export interface VerifyOtpResponseDto {
   isNewUser: boolean;
 }
 
+/** Payload to complete sign-up after the age-gate screen (new users only). */
+export interface CompleteSignupDto {
+  /** Short-lived ticket returned by POST /auth/otp/verify for new users. */
+  signupTicket: string;
+  email: string;
+  /** Birth year only (year-only collection minimises data per privacy-by-design). */
+  birthYear: number;
+  marketingConsent?: boolean;
+  /** Required (and must be true) when birthYear puts the user in the 13–17 range. */
+  parentalConsentConfirmed?: boolean;
+}
+
+/** Response from POST /auth/complete-signup */
+export interface CompleteSignupResponseDto {
+  isNewUser: true;
+  tokens: AuthTokensDto;
+  user: UserDto;
+}
+
 /** Refresh token payload */
 export interface RefreshTokenDto {
   refreshToken: string;

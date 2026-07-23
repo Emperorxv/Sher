@@ -4,6 +4,8 @@ export type {
   OtpVerifyDto,
   AuthTokensDto,
   VerifyOtpResponseDto,
+  CompleteSignupDto,
+  CompleteSignupResponseDto,
   RefreshTokenDto,
   UserDto,
 } from './auth';
