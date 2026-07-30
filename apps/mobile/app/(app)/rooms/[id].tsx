@@ -11,7 +11,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -371,13 +370,11 @@ export default function RoomDashboard() {
           </View>
         </View>
 
-        {/* Members list */}
+        {/* Members list — plain View+map; no FlatList inside ScrollView */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Members ({membersPage?.total ?? 0})</Text>
-          <FlatList
-            data={membersPage?.items ?? []}
-            keyExtractor={(m) => m.userId}
-            renderItem={({ item }) => (
+          {(membersPage?.items ?? []).map((item, index, arr) => (
+            <React.Fragment key={item.userId}>
               <MemberRow
                 member={item}
                 onRemove={
@@ -390,10 +387,9 @@ export default function RoomDashboard() {
                   item.userId !== userId ? () => setReportMembershipId(item.userId) : undefined
                 }
               />
-            )}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-          />
+              {index < arr.length - 1 && <View style={styles.separator} />}
+            </React.Fragment>
+          ))}
         </View>
 
         {/* Photo gallery — handles locked / empty / grid states internally */}
