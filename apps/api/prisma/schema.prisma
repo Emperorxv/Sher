@@ -278,7 +278,7 @@ model Report {
   reporterId String
   reporter   User             @relation(fields: [reporterId], references: [id])
   targetType ReportTargetType
-  targetId   String           // photoId (PHOTO) or membershipId (MEMBER)
+  targetId   String           // photoId (PHOTO) or userId (MEMBER)
   roomId     String
   room       Room             @relation(fields: [roomId], references: [id])
   reason     ReportReason

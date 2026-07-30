@@ -12,7 +12,7 @@ export type ReportStatus = 'PENDING' | 'REVIEWED' | 'ACTIONED' | 'DISMISSED';
 /** Body for POST /v1/reports */
 export interface CreateReportDto {
   targetType: ReportTargetType;
-  /** photoId when targetType is PHOTO; membershipId when targetType is MEMBER */
+  /** photoId when targetType is PHOTO; userId when targetType is MEMBER */
   targetId: string;
   roomId: string;
   reason: ReportReason;

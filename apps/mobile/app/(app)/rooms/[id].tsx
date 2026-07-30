@@ -22,7 +22,13 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@sher/shared-types';
-import { Button, JoinCodeDisplay, PaywallSheet, PhotoGallery } from '../../../components';
+import {
+  Button,
+  JoinCodeDisplay,
+  PaywallSheet,
+  PhotoGallery,
+  ReportSheet,
+} from '../../../components';
 import {
   useRoom,
   useRoomMembers,
@@ -46,10 +52,12 @@ function MemberRow({
   member,
   onRemove,
   removeDisabled,
+  onReport,
 }: {
   member: MemberDto;
   onRemove?: () => void;
   removeDisabled?: boolean;
+  onReport?: () => void;
 }) {
   const roleColor: Record<string, string> = {
     HOST: colors.violet,
@@ -80,6 +88,17 @@ function MemberRow({
           </Text>
         </Pressable>
       )}
+      {onReport && (
+        <Pressable
+          onPress={onReport}
+          style={styles.removeBtn}
+          accessibilityLabel={`Report ${member.displayName ?? member.userId.slice(-8)}`}
+          accessibilityRole="button"
+          testID={`report-member-${member.userId}`}
+        >
+          <Text style={styles.reportBtnText}>Report</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -107,6 +126,10 @@ export default function RoomDashboard() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paymentFailedMsg, setPaymentFailedMsg] = useState<string | null>(null);
   const autoOpened = useRef(false);
+
+  // ── Report member state ────────────────────────────────────────────────────
+  // Holds the membershipId of the member being reported, or null when closed.
+  const [reportMembershipId, setReportMembershipId] = useState<string | null>(null);
 
   // ── Computed paywall values (null-safe; evaluated before early return) ─────
 
@@ -363,6 +386,9 @@ export default function RoomDashboard() {
                     : undefined
                 }
                 removeDisabled={removeMember.isPending}
+                onReport={
+                  item.userId !== userId ? () => setReportMembershipId(item.userId) : undefined
+                }
               />
             )}
             scrollEnabled={false}
@@ -425,6 +451,17 @@ export default function RoomDashboard() {
           purpose={paywallPurpose}
           onPay={handlePay}
           onDismiss={() => setPaywallOpen(false)}
+        />
+      )}
+
+      {/* Report member sheet */}
+      {reportMembershipId && id && (
+        <ReportSheet
+          visible={!!reportMembershipId}
+          targetType="MEMBER"
+          targetId={reportMembershipId}
+          roomId={id}
+          onDismiss={() => setReportMembershipId(null)}
         />
       )}
     </SafeAreaView>
@@ -554,6 +591,12 @@ const styles = StyleSheet.create({
   },
   removeBtnDisabled: {
     opacity: 0.4,
+  },
+  reportBtnText: {
+    fontFamily: fonts.label,
+    fontSize: fontSizes.caption,
+    color: colors.coal,
+    opacity: 0.5,
   },
   separator: {
     height: 1,

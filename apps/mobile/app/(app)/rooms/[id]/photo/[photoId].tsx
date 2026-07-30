@@ -4,7 +4,7 @@
  * Modal-style full-resolution photo view.
  * No gradients; solid colors only.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -17,6 +17,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ApiError } from '@sher/api-client';
 import { usePhoto } from '../../../../../lib/photos';
+import { ReportSheet } from '../../../../../components/ReportSheet';
 import { colors, fonts, fontSizes, radii, spacing } from '../../../../../theme';
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export default function PhotoDetailScreen() {
   const { id, photoId } = useLocalSearchParams<{ id: string; photoId: string }>();
   const router = useRouter();
   const { data: photo, isLoading, error } = usePhoto(id ?? '', photoId ?? '');
+  const [reportOpen, setReportOpen] = useState(false);
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
@@ -119,6 +121,16 @@ export default function PhotoDetailScreen() {
             </Text>
           )}
         </View>
+
+        <Pressable
+          style={styles.overflowButton}
+          onPress={() => setReportOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="More options"
+          testID="photo-overflow-button"
+        >
+          <Text style={styles.overflowLabel}>•••</Text>
+        </Pressable>
       </View>
 
       {/* Full-resolution image */}
@@ -129,6 +141,16 @@ export default function PhotoDetailScreen() {
         testID="photo-detail-image"
         accessibilityLabel="Full-resolution photo"
       />
+
+      {reportOpen && (
+        <ReportSheet
+          visible={reportOpen}
+          targetType="PHOTO"
+          targetId={photoId ?? ''}
+          roomId={id ?? ''}
+          onDismiss={() => setReportOpen(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -163,6 +185,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.cream,
     fontFamily: fonts.label,
+  },
+  overflowButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 248, 240, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  overflowLabel: {
+    fontSize: 14,
+    color: colors.cream,
+    fontFamily: fonts.label,
+    letterSpacing: 2,
   },
   meta: {
     flex: 1,

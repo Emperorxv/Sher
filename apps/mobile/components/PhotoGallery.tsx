@@ -9,7 +9,7 @@
  *
  * No gradients; solid colors only.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -22,6 +22,7 @@ import {
 import { useRouter } from 'expo-router';
 import { usePhotos } from '../lib/photos';
 import { LockedGalleryPlaceholder } from './LockedGalleryPlaceholder';
+import { ReportSheet } from './ReportSheet';
 import { colors, fonts, fontSizes, radii, spacing } from '../theme';
 
 export type PhotoGalleryProps = {
@@ -37,6 +38,7 @@ const COLUMNS = 3;
 export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGalleryProps) {
   const router = useRouter();
   const { data, isLoading } = usePhotos(roomId);
+  const [reportPhotoId, setReportPhotoId] = useState<string | null>(null);
   if (isLoading) {
     return (
       <View style={styles.loading} testID="gallery-loading">
@@ -58,31 +60,47 @@ export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGallery
   }
 
   return (
-    <FlatList
-      data={data.data}
-      keyExtractor={(p) => p.id}
-      numColumns={COLUMNS}
-      scrollEnabled={false}
-      testID="gallery-grid"
-      renderItem={({ item }) => (
-        <Pressable
-          onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
-          accessibilityRole="button"
-          accessibilityLabel="View photo"
-          testID={`photo-tile-${item.id}`}
-        >
-          {item.thumbUrl ? (
-            <Image
-              source={{ uri: item.thumbUrl }}
-              style={styles.thumb}
-              testID={`photo-thumb-${item.id}`}
-            />
-          ) : (
-            <View style={[styles.thumb, styles.thumbPending]} testID={`photo-pending-${item.id}`} />
-          )}
-        </Pressable>
+    <>
+      <FlatList
+        data={data.data}
+        keyExtractor={(p) => p.id}
+        numColumns={COLUMNS}
+        scrollEnabled={false}
+        testID="gallery-grid"
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
+            onLongPress={() => setReportPhotoId(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel="View photo"
+            testID={`photo-tile-${item.id}`}
+          >
+            {item.thumbUrl ? (
+              <Image
+                source={{ uri: item.thumbUrl }}
+                style={styles.thumb}
+                testID={`photo-thumb-${item.id}`}
+              />
+            ) : (
+              <View
+                style={[styles.thumb, styles.thumbPending]}
+                testID={`photo-pending-${item.id}`}
+              />
+            )}
+          </Pressable>
+        )}
+      />
+
+      {reportPhotoId && (
+        <ReportSheet
+          visible={!!reportPhotoId}
+          targetType="PHOTO"
+          targetId={reportPhotoId}
+          roomId={roomId}
+          onDismiss={() => setReportPhotoId(null)}
+        />
       )}
-    />
+    </>
   );
 }
 

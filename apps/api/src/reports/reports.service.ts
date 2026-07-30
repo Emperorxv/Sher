@@ -136,9 +136,9 @@ export class ReportsService {
         });
       }
     } else {
-      // MEMBER — targetId is a membershipId
+      // MEMBER — targetId is the userId of the reported member
       const membership = await this.prisma.membership.findFirst({
-        where: { id: targetId, roomId },
+        where: { userId: targetId, roomId },
         select: { id: true },
       });
       if (!membership) {

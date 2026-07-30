@@ -6,4 +6,5 @@ export { JoinCodeDisplay } from './JoinCodeDisplay';
 export { LockedGalleryPlaceholder } from './LockedGalleryPlaceholder';
 export { PaywallSheet } from './PaywallSheet';
 export { PhotoGallery } from './PhotoGallery';
+export { ReportSheet } from './ReportSheet';
 export { Sticker } from './Sticker';
