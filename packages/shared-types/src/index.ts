@@ -37,6 +37,14 @@ export type {
 } from './photos';
 
 export type {
+  ReportTargetType,
+  ReportReason,
+  ReportStatus,
+  CreateReportDto,
+  ReportCreatedDto,
+} from './reports';
+
+export type {
   PaymentProvider,
   PaymentStatus,
   PaymentPurpose,

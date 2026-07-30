@@ -2,6 +2,7 @@ import type {
   AuthTokensDto,
   CompleteSignupDto,
   CompleteSignupResponseDto,
+  CreateReportDto,
   CreateRoomDto,
   CreateRoomResponseDto,
   GetUploadUrlBodyDto,
@@ -19,6 +20,7 @@ import type {
   PhotoListResponseDto,
   PricingQuoteDto,
   RefreshTokenDto,
+  ReportCreatedDto,
   RetentionExtendBodyDto,
   RoomDto,
   RoomSummaryDto,
@@ -247,7 +249,15 @@ export function createApiClient(opts: ApiClientOptions) {
       rawFetch<PhotoDetailDto>(`/v1/rooms/${roomId}/photos/${photoId}`),
   };
 
-  return { auth, rooms, payments, photos };
+  // ─── Reports endpoints ───────────────────────────────────────────────────────
+
+  const reports = {
+    /** POST /v1/reports — submit a report for a photo or member */
+    create: (dto: CreateReportDto) =>
+      rawFetch<ReportCreatedDto>('/v1/reports', { method: 'POST', body: dto }),
+  };
+
+  return { auth, rooms, payments, photos, reports };
 }
 
 export class ApiError extends Error {
