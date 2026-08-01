@@ -62,6 +62,8 @@ const ENDED_ROOM = {
   baseCapacity: 3,
   baseUnlockedAt: null,
   baseUnlockPaymentId: null,
+  unlockedAt: null,
+  unlockPaymentId: null,
   pricingCurrency: 'NGN',
   retentionUntil: new Date('2031-01-30T22:00:00Z'),
   endsAt: new Date('2026-05-30T22:00:00Z'),
@@ -70,6 +72,7 @@ const ENDED_ROOM = {
 
 const ACTIVE_ROOM = { ...ENDED_ROOM, status: 'ACTIVE' as const, endedAt: null };
 const ALREADY_UNLOCKED_ROOM = { ...ENDED_ROOM, baseUnlockedAt: new Date('2026-05-31') };
+const ALREADY_ROOM_UNLOCKED = { ...ENDED_ROOM, unlockedAt: new Date('2026-05-31') };
 
 const HOST_MEMBERSHIP = {
   id: 'mem-host-1',
@@ -121,6 +124,12 @@ const MOCK_BASE_PAYMENT = {
   metadata: {},
   paidAt: null,
   createdAt: new Date('2026-05-31'),
+};
+
+const MOCK_ROOM_UNLOCK_PAYMENT = {
+  ...MOCK_BASE_PAYMENT,
+  id: 'payment-room-unlock-1',
+  purpose: 'ROOM_UNLOCK',
 };
 
 const MOCK_MEMBER_PAYMENT = {
@@ -238,6 +247,89 @@ describe('UnlocksController (contract)', () => {
     await app.close();
   });
 
+  // ── POST /v1/rooms/:id/unlock (unified ROOM_UNLOCK) ───────────────────────
+
+  describe('POST /v1/rooms/:id/unlock', () => {
+    it('201 — host initiates ROOM_UNLOCK → exact PaymentInitDto shape', async () => {
+      mockPrisma.payment.create.mockResolvedValueOnce(MOCK_ROOM_UNLOCK_PAYMENT);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${hostToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.CREATED);
+      const { data } = res.body as { data: Record<string, unknown> };
+
+      expect(data).toMatchObject({
+        paymentId: 'payment-room-unlock-1',
+        authorizationUrl: 'https://checkout.paystack.com/test-url',
+        providerRef: 'sher_test_ref_001',
+        amountMinor: 150_000, // same tier as BASE_UNLOCK
+        currency: 'NGN',
+        amountDisplay: '₦1,500.00',
+        provider: 'PAYSTACK',
+      });
+    });
+
+    it('403 — non-host caller → HOST_ONLY', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${guestToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.FORBIDDEN);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('HOST_ONLY');
+    });
+
+    it('422 — room still active → ROOM_STILL_ACTIVE', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce(ACTIVE_ROOM);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${hostToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('ROOM_STILL_ACTIVE');
+    });
+
+    it('409 — already unlocked via unlockedAt (ROOM_UNLOCK model) → ALREADY_UNLOCKED', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce(ALREADY_ROOM_UNLOCKED);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${hostToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.CONFLICT);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('ALREADY_UNLOCKED');
+    });
+
+    it('409 — already unlocked via baseUnlockedAt (old model) → ALREADY_UNLOCKED', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce(ALREADY_UNLOCKED_ROOM);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${hostToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.CONFLICT);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('ALREADY_UNLOCKED');
+    });
+
+    it('401 — no token', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .send({});
+      expect(res.status).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
   // ── POST /v1/rooms/:id/unlock/base ─────────────────────────────────────────
 
   describe('POST /v1/rooms/:id/unlock/base', () => {
@@ -310,8 +402,21 @@ describe('UnlocksController (contract)', () => {
       expect(error.code).toBe('ROOM_STILL_ACTIVE');
     });
 
-    it('409 — base already unlocked → ALREADY_UNLOCKED', async () => {
+    it('409 — base already unlocked via baseUnlockedAt → ALREADY_UNLOCKED', async () => {
       mockPrisma.room.findUnique.mockResolvedValueOnce(ALREADY_UNLOCKED_ROOM);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock/base`)
+        .set('Authorization', `Bearer ${hostToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.CONFLICT);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('ALREADY_UNLOCKED');
+    });
+
+    it('409 — already unlocked via unlockedAt (ROOM_UNLOCK model) → ALREADY_UNLOCKED', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce(ALREADY_ROOM_UNLOCKED);
 
       const res = await request(app.getHttpServer())
         .post(`/v1/rooms/${ENDED_ROOM.id}/unlock/base`)

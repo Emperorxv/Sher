@@ -21,6 +21,18 @@ import { PaymentsService } from './payments.service';
 export class UnlocksController {
   constructor(private readonly payments: PaymentsService) {}
 
+  // ── POST /v1/rooms/:id/unlock ──────────────────────────────────────────────
+
+  @Post(':id/unlock')
+  @HttpCode(HttpStatus.CREATED)
+  initiateRoomUnlock(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(createZodPipe(InitiateUnlockSchema)) dto: InitiateUnlockInput,
+  ) {
+    return this.payments.initiateRoomUnlock(id, user.id, dto);
+  }
+
   // ── POST /v1/rooms/:id/unlock/base ─────────────────────────────────────────
 
   @Post(':id/unlock/base')

@@ -68,7 +68,8 @@ export class PaymentsService {
       });
     }
 
-    if (room.baseUnlockedAt !== null) {
+    // Dual-field check: covers both old BASE_UNLOCK model and new ROOM_UNLOCK model.
+    if (room.baseUnlockedAt !== null || room.unlockedAt !== null) {
       throw new ConflictException({
         code: 'ALREADY_UNLOCKED',
         message: 'The base unlock for this room has already been paid.',
@@ -84,6 +85,55 @@ export class PaymentsService {
       providerName: input.provider,
       pricingArgs: { currency: room.pricingCurrency as SupportedCurrency, purpose: 'BASE_UNLOCK' },
       metadata: { roomId, purpose: 'BASE_UNLOCK' },
+    });
+  }
+
+  // ── Initiate: unified room unlock (ROOM_UNLOCK) ───────────────────────────
+
+  /**
+   * Unified host unlock endpoint — creates a ROOM_UNLOCK payment.
+   * On success: Room.unlockedAt is set and all base-capacity memberships
+   * transition to EXEMPT.  Replaces BASE_UNLOCK for new flows; the old
+   * BASE_UNLOCK endpoint remains for backward compatibility.
+   */
+  async initiateRoomUnlock(
+    roomId: string,
+    callerId: string,
+    input: InitiateUnlockInput,
+  ): Promise<PaymentInitDto> {
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('ROOM_NOT_FOUND');
+
+    if (room.hostId !== callerId) {
+      throw new ForbiddenException({
+        code: 'HOST_ONLY',
+        message: 'Only the room host can initiate the room unlock.',
+      });
+    }
+
+    if (room.status !== RoomStatus.ENDED) {
+      throw new UnprocessableEntityException({
+        code: 'ROOM_STILL_ACTIVE',
+        message: 'The room has not ended yet. The paywall engages when the room ends.',
+      });
+    }
+
+    if (room.baseUnlockedAt !== null || room.unlockedAt !== null) {
+      throw new ConflictException({
+        code: 'ALREADY_UNLOCKED',
+        message: 'The room has already been unlocked.',
+      });
+    }
+
+    return this.initiatePayment({
+      callerId,
+      roomId,
+      membershipId: null,
+      purpose: PaymentPurpose.ROOM_UNLOCK,
+      currency: room.pricingCurrency as SupportedCurrency,
+      providerName: input.provider,
+      pricingArgs: { currency: room.pricingCurrency as SupportedCurrency, purpose: 'BASE_UNLOCK' },
+      metadata: { roomId, purpose: 'ROOM_UNLOCK' },
     });
   }
 
@@ -238,7 +288,7 @@ export class PaymentsService {
 
     return {
       callerUnlockState,
-      baseUnlocked: room.baseUnlockedAt !== null,
+      baseUnlocked: room.baseUnlockedAt !== null || room.unlockedAt !== null,
       baseUnlockPending: pendingBase !== null,
       memberUnlockPending: pendingMember !== null,
       amountDue,
@@ -432,6 +482,24 @@ export class PaymentsService {
         await tx.room.update({
           where: { id: payment.roomId },
           data: { baseUnlockedAt: now, baseUnlockPaymentId: payment.id },
+        });
+
+        await tx.membership.updateMany({
+          where: { roomId: payment.roomId, joinOrder: { lte: room.baseCapacity }, leftAt: null },
+          data: { unlockState: 'EXEMPT', unlockedAt: now },
+        });
+
+        this.gateway.emitBaseUnlocked(payment.roomId);
+        break;
+      }
+
+      case PaymentPurpose.ROOM_UNLOCK: {
+        const room = await tx.room.findUnique({ where: { id: payment.roomId } });
+        if (!room) return;
+
+        await tx.room.update({
+          where: { id: payment.roomId },
+          data: { unlockedAt: now, unlockPaymentId: payment.id },
         });
 
         await tx.membership.updateMany({

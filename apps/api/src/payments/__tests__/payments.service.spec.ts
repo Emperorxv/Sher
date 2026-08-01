@@ -48,6 +48,8 @@ const ENDED_ROOM = {
   hostId: HOST_ID,
   status: 'ENDED' as const,
   baseUnlockedAt: null,
+  unlockedAt: null,
+  unlockPaymentId: null,
   baseCapacity: 3,
   pricingCurrency: 'NGN',
   retentionUntil: new Date('2030-01-01'),
@@ -56,6 +58,7 @@ const ENDED_ROOM = {
 
 const ACTIVE_ROOM = { ...ENDED_ROOM, status: 'ACTIVE' as const };
 const ALREADY_UNLOCKED_ROOM = { ...ENDED_ROOM, baseUnlockedAt: new Date('2026-05-02') };
+const ALREADY_ROOM_UNLOCKED = { ...ENDED_ROOM, unlockedAt: new Date('2026-05-02') };
 
 const HOST_MEMBERSHIP = {
   id: 'membership-host-1',
@@ -252,6 +255,13 @@ describe('initiateBaseUnlock()', () => {
     expect((err as ConflictException).getResponse()).toMatchObject({ code: 'ALREADY_UNLOCKED' });
   });
 
+  it('throws ALREADY_UNLOCKED when unlockedAt (ROOM_UNLOCK model) is set', async () => {
+    const { service } = makeService({ roomFindUnique: ALREADY_ROOM_UNLOCKED });
+    const err = await service.initiateBaseUnlock(ROOM_ID, HOST_ID, INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({ code: 'ALREADY_UNLOCKED' });
+  });
+
   it('does NOT create a Payment row when provider.initiate() throws (Amendment 5)', async () => {
     const { service, prisma } = makeService(
       { userFindUnique: HOST_USER },
@@ -305,6 +315,74 @@ describe('initiateBaseUnlock()', () => {
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect((err as ServiceUnavailableException).getResponse()).toMatchObject({
       code: 'FLUTTERWAVE_UNAVAILABLE',
+    });
+  });
+});
+
+// ── initiateRoomUnlock ────────────────────────────────────────────────────────
+
+describe('initiateRoomUnlock()', () => {
+  const INPUT = { provider: 'PAYSTACK' as const };
+
+  it('throws ROOM_NOT_FOUND when room does not exist', async () => {
+    const { service } = makeService({ roomFindUnique: null });
+    await expect(service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('throws HOST_ONLY when caller is not the host', async () => {
+    const { service } = makeService();
+    const err = await service.initiateRoomUnlock(ROOM_ID, GUEST_ID, INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({ code: 'HOST_ONLY' });
+  });
+
+  it('throws ROOM_STILL_ACTIVE when room is not ENDED', async () => {
+    const { service } = makeService({ roomFindUnique: ACTIVE_ROOM });
+    const err = await service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect((err as UnprocessableEntityException).getResponse()).toMatchObject({
+      code: 'ROOM_STILL_ACTIVE',
+    });
+  });
+
+  it('throws ALREADY_UNLOCKED when baseUnlockedAt is set (old model)', async () => {
+    const { service } = makeService({ roomFindUnique: ALREADY_UNLOCKED_ROOM });
+    const err = await service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({ code: 'ALREADY_UNLOCKED' });
+  });
+
+  it('throws ALREADY_UNLOCKED when unlockedAt is set (new model)', async () => {
+    const { service } = makeService({ roomFindUnique: ALREADY_ROOM_UNLOCKED });
+    const err = await service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({ code: 'ALREADY_UNLOCKED' });
+  });
+
+  it('creates a ROOM_UNLOCK Payment row and returns PaymentInitDto on success', async () => {
+    const { service, prisma } = makeService({ userFindUnique: HOST_USER });
+    const result = await service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT);
+
+    expect(prisma.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: HOST_ID,
+          roomId: ROOM_ID,
+          purpose: 'ROOM_UNLOCK',
+          status: 'PENDING',
+          provider: 'PAYSTACK',
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      paymentId: 'payment-1',
+      authorizationUrl: 'https://checkout.paystack.com/test',
+      providerRef: 'sher_fake-ref',
+      amountMinor: 150_000,
+      currency: 'NGN',
+      provider: 'PAYSTACK',
     });
   });
 });
@@ -623,6 +701,37 @@ describe('handleWebhookSuccess()', () => {
         }),
       );
       expect(gateway.emitMemberUnlocked).toHaveBeenCalledWith(ROOM_ID, GUEST_ID);
+    });
+  });
+
+  describe('ROOM_UNLOCK', () => {
+    const PENDING_ROOM_UNLOCK_PAYMENT = {
+      ...MOCK_PAYMENT,
+      id: 'payment-room-unlock-1',
+      purpose: 'ROOM_UNLOCK',
+      status: 'PENDING',
+    };
+
+    it('sets room.unlockedAt, exempts base-capacity memberships, emits room:base_unlocked', async () => {
+      const { service, prisma, gateway } = makeService({
+        paymentFindFirst: PENDING_ROOM_UNLOCK_PAYMENT,
+      });
+
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+
+      expect(prisma.room.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: ROOM_ID },
+          data: expect.objectContaining({ unlockedAt: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.membership.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ roomId: ROOM_ID, joinOrder: { lte: 3 }, leftAt: null }),
+          data: expect.objectContaining({ unlockState: 'EXEMPT' }),
+        }),
+      );
+      expect(gateway.emitBaseUnlocked).toHaveBeenCalledWith(ROOM_ID);
     });
   });
 
