@@ -50,6 +50,7 @@ enum PaymentStatus {
 enum PaymentPurpose {
   BASE_UNLOCK
   MEMBER_UNLOCK
+  ROOM_UNLOCK
   RETENTION_EXTENSION
 }
 
@@ -125,10 +126,13 @@ model Room {
   startsAt             DateTime
   endsAt               DateTime // capture window closes here
   endedAt              DateTime? // when status actually became ENDED (paywall engages)
-  baseUnlockedAt       DateTime? // when host successfully paid BASE_UNLOCK
+  baseUnlockedAt       DateTime? // when host successfully paid BASE_UNLOCK (old model — read-only)
   // Bare String? — no @relation. See architecture.md §12 payment rationale.
   // If Payment deletion is ever added, revisit and add @relation with onDelete: SetNull.
   baseUnlockPaymentId  String?
+  unlockedAt           DateTime? // when a ROOM_UNLOCK payment succeeded (unified model)
+  unlockPaymentId      String?   // FK to Payment that triggered the unified unlock (bare String — same rationale)
+  memberCountAtEnd     Int?      // live member count frozen at endRoom; sole input to tier lookup
   retentionUntil       DateTime // photos auto-delete after this
   coverPhotoId         String?
   pricingCurrency      String     @default("NGN") // currency captured at room creation
