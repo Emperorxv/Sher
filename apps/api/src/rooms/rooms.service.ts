@@ -292,9 +292,14 @@ export class RoomsService {
     if (!room) throw new NotFoundException('ROOM_NOT_FOUND');
     if (room.status !== RoomStatus.ACTIVE) throw new ForbiddenException('ROOM_NOT_ACTIVE');
 
+    // Snapshot live member count once — never recalculated after this.
+    const memberCountAtEnd = await this.prisma.membership.count({
+      where: { roomId, leftAt: null },
+    });
+
     const updated = await this.prisma.room.update({
       where: { id: roomId },
-      data: { status: RoomStatus.ENDED, endedAt: new Date() },
+      data: { status: RoomStatus.ENDED, endedAt: new Date(), memberCountAtEnd },
       include: { _count: { select: { memberships: { where: { leftAt: null } }, photos: true } } },
     });
 

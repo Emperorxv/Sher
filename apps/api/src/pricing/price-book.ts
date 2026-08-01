@@ -22,7 +22,7 @@ export const PRICE_BOOK: Record<
     retentionMonth: 100_000,
     retentionYear: 800_000,
   },
-  USD: { baseUnlock: 199, memberUnlock: 99, retentionMonth: 149, retentionYear: 999 },
+  USD: { baseUnlock: 199, memberUnlock: 99, retentionMonth: 199, retentionYear: 999 },
   GHS: { baseUnlock: 2_400, memberUnlock: 1_600, retentionMonth: 1_800, retentionYear: 11_900 },
   KES: { baseUnlock: 25_900, memberUnlock: 15_900, retentionMonth: 19_900, retentionYear: 129_900 },
   ZAR: { baseUnlock: 3_600, memberUnlock: 2_400, retentionMonth: 2_700, retentionYear: 17_900 },

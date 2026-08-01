@@ -17,6 +17,7 @@ describe('PricingService.quote()', () => {
     ['NGN', 'MEMBER_UNLOCK', PRICE_BOOK.NGN.memberUnlock, '₦1,000.00'],
     ['USD', 'BASE_UNLOCK', PRICE_BOOK.USD.baseUnlock, '$1.99'],
     ['USD', 'MEMBER_UNLOCK', PRICE_BOOK.USD.memberUnlock, '$0.99'],
+    ['USD', 'RETENTION_MONTH', PRICE_BOOK.USD.retentionMonth, '$1.99'],
     ['GHS', 'BASE_UNLOCK', PRICE_BOOK.GHS.baseUnlock, '₵24.00'],
     ['KES', 'BASE_UNLOCK', PRICE_BOOK.KES.baseUnlock, 'KSh259.00'],
     ['ZAR', 'BASE_UNLOCK', PRICE_BOOK.ZAR.baseUnlock, 'R36.00'],
