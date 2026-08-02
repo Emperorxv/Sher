@@ -1,6 +1,10 @@
 export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE';
 export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
-export type PaymentPurpose = 'BASE_UNLOCK' | 'MEMBER_UNLOCK' | 'RETENTION_EXTENSION';
+export type PaymentPurpose =
+  | 'BASE_UNLOCK'
+  | 'MEMBER_UNLOCK'
+  | 'ROOM_UNLOCK'
+  | 'RETENTION_EXTENSION';
 
 /** Body for POST /rooms/:id/unlock/base and /rooms/:id/unlock/member */
 export interface InitiateUnlockBodyDto {
@@ -28,7 +32,7 @@ export interface PaymentInitDto {
 export interface AmountDueDto {
   amountMinor: number;
   amountDisplay: string;
-  purpose: Extract<PaymentPurpose, 'BASE_UNLOCK' | 'MEMBER_UNLOCK'>;
+  purpose: Extract<PaymentPurpose, 'BASE_UNLOCK' | 'MEMBER_UNLOCK' | 'ROOM_UNLOCK'>;
 }
 
 /** Returned by GET /rooms/:id/unlock/status */

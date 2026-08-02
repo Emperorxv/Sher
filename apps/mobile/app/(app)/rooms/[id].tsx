@@ -28,19 +28,8 @@ import {
   PhotoGallery,
   ReportSheet,
 } from '../../../components';
-import {
-  useRoom,
-  useRoomMembers,
-  useRoomPricing,
-  useEndRoom,
-  useRemoveMember,
-  roomKeys,
-} from '../../../lib/rooms';
-import {
-  useUnlockStatus,
-  useInitiateBaseUnlock,
-  useInitiateMemberUnlock,
-} from '../../../lib/payments';
+import { useRoom, useRoomMembers, useEndRoom, useRemoveMember, roomKeys } from '../../../lib/rooms';
+import { useUnlockStatus, useInitiateRoomUnlock } from '../../../lib/payments';
 import { photoKeys } from '../../../lib/photos';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
@@ -114,11 +103,9 @@ export default function RoomDashboard() {
   const { data: room, isLoading } = useRoom(id ?? '');
   const { data: membersPage } = useRoomMembers(id ?? '');
   const { data: unlockStatus } = useUnlockStatus(id ?? '');
-  const { data: pricingData } = useRoomPricing(id ?? '');
   const endRoom = useEndRoom();
   const removeMember = useRemoveMember();
-  const initiateBase = useInitiateBaseUnlock(id ?? '');
-  const initiateMember = useInitiateMemberUnlock(id ?? '');
+  const initiateRoomUnlock = useInitiateRoomUnlock(id ?? '');
 
   // ── Paywall state ──────────────────────────────────────────────────────────
 
@@ -142,32 +129,21 @@ export default function RoomDashboard() {
   const isLocked = unlockStatus?.callerUnlockState === 'LOCKED';
   const showPaywall = room?.status === 'ENDED' && isLocked;
 
-  const callerMember = membersPage?.items.find((m) => m.userId === userId);
-  const isExtraMember = (callerMember?.joinOrder ?? 0) > (room?.baseCapacity ?? 3);
-  const paywallPurpose: 'BASE_UNLOCK' | 'MEMBER_UNLOCK' = isExtraMember
-    ? 'MEMBER_UNLOCK'
-    : 'BASE_UNLOCK';
-  const paywallPricing =
-    paywallPurpose === 'BASE_UNLOCK'
-      ? {
-          amountMinor: pricingData?.baseUnlock.amountMinor ?? 0,
-          currency: pricingData?.currency ?? '',
-          amountDisplay: pricingData?.baseUnlock.display ?? '…',
-        }
-      : {
-          amountMinor: pricingData?.memberUnlock.amountMinor ?? 0,
-          currency: pricingData?.currency ?? '',
-          amountDisplay: pricingData?.memberUnlock.display ?? '…',
-        };
+  // Pricing comes from the API's tier calculation — never hardcoded on client
+  const paywallPricing = {
+    amountMinor: unlockStatus?.amountDue?.amountMinor ?? 0,
+    currency: room?.pricingCurrency ?? '',
+    amountDisplay: unlockStatus?.amountDue?.amountDisplay ?? '…',
+  };
 
-  // ── Auto-open paywall for host / extra-member on first encounter ───────────
+  // ── Auto-open paywall for any LOCKED member when room has ended ───────────
 
   useEffect(() => {
-    if (!autoOpened.current && showPaywall && (isHost || isExtraMember)) {
+    if (!autoOpened.current && showPaywall) {
       autoOpened.current = true;
       setPaywallOpen(true);
     }
-  }, [showPaywall, isHost, isExtraMember]);
+  }, [showPaywall]);
 
   // ── Socket.IO subscription for live updates ────────────────────────────────
 
@@ -232,20 +208,19 @@ export default function RoomDashboard() {
 
   const handlePay = useCallback(
     async (provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
-      const hook = paywallPurpose === 'BASE_UNLOCK' ? initiateBase : initiateMember;
       // Let errors propagate — PaywallSheet catches and maps them
-      const result = await hook.mutateAsync({ provider });
+      const result = await initiateRoomUnlock.mutateAsync({ provider });
       router.push({
         pathname: '/checkout/[paymentRef]',
         params: {
           paymentRef: result.providerRef,
           roomId: id!,
           authorizationUrl: result.authorizationUrl,
-          purpose: paywallPurpose,
+          purpose: 'ROOM_UNLOCK',
         },
       });
     },
-    [paywallPurpose, initiateBase, initiateMember, id, router],
+    [initiateRoomUnlock, id, router],
   );
 
   // ── Room actions ───────────────────────────────────────────────────────────
@@ -444,7 +419,6 @@ export default function RoomDashboard() {
       {paywallOpen && (
         <PaywallSheet
           pricing={paywallPricing}
-          purpose={paywallPurpose}
           onPay={handlePay}
           onDismiss={() => setPaywallOpen(false)}
         />

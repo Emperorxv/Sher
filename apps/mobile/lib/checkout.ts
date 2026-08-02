@@ -17,16 +17,15 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Polls getUnlockStatus for `roomId` up to 3 times at 5-second intervals.
- * Returns `true` as soon as `callerUnlockState` equals `expected`.
- * Returns `false` if all three polls return a non-matching state.
+ * Returns `true` as soon as the room is unlocked at any level:
+ *   - baseUnlocked is true (ROOM_UNLOCK payment confirmed), OR
+ *   - callerUnlockState is not LOCKED (EXEMPT or UNLOCKED).
+ * Returns `false` if all three polls return a still-locked state.
  */
-export async function pollUnlockStatus(
-  roomId: string,
-  expected: 'EXEMPT' | 'UNLOCKED',
-): Promise<boolean> {
+export async function pollUnlockStatus(roomId: string): Promise<boolean> {
   for (let i = 0; i < 3; i++) {
     const status = await apiClient.payments.getUnlockStatus(roomId);
-    if (status.callerUnlockState === expected) return true;
+    if (status.baseUnlocked === true || status.callerUnlockState !== 'LOCKED') return true;
     await sleep(5000);
   }
   return false;

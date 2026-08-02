@@ -65,8 +65,7 @@ jest.mock('../../lib/rooms', () => ({
 
 jest.mock('../../lib/payments', () => ({
   useUnlockStatus: jest.fn(() => ({ data: null })),
-  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
-  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useInitiateRoomUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
 }));
 
 jest.mock('../../stores/auth', () => ({

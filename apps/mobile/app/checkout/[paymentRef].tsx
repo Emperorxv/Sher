@@ -75,7 +75,7 @@ export default function CheckoutScreen() {
     pollingRef.current = true;
     setScreenState('polling');
 
-    const unlocked = await pollUnlockStatus(roomId, 'UNLOCKED');
+    const unlocked = await pollUnlockStatus(roomId);
 
     if (unlocked) {
       router.replace({ pathname: '/(app)/rooms/[id]', params: { id: roomId } });
@@ -149,7 +149,7 @@ export default function CheckoutScreen() {
 
   // screenState === 'webview'
   const purposeLabel =
-    purpose === 'BASE_UNLOCK' ? 'Unlock gallery for everyone' : 'Unlock your gallery access';
+    purpose === 'ROOM_UNLOCK' ? 'Unlock photos for everyone' : 'Unlock gallery access';
 
   return (
     <SafeAreaView style={styles.container}>

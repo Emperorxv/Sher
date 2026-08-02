@@ -33,7 +33,7 @@ const LOCKED_STATUS: UnlockStatusDto = {
   baseUnlocked: false,
   baseUnlockPending: true,
   memberUnlockPending: false,
-  amountDue: { amountMinor: 150_000, amountDisplay: '₦1,500.00', purpose: 'BASE_UNLOCK' },
+  amountDue: { amountMinor: 700_000, amountDisplay: '₦7,000.00', purpose: 'ROOM_UNLOCK' },
 };
 
 const UNLOCKED_STATUS: UnlockStatusDto = {
@@ -77,7 +77,7 @@ describe('pollUnlockStatus', () => {
   it('returns true immediately when first poll finds UNLOCKED', async () => {
     mockGetUnlockStatus.mockResolvedValue(UNLOCKED_STATUS);
 
-    const resultPromise = pollUnlockStatus('room-1', 'UNLOCKED');
+    const resultPromise = pollUnlockStatus('room-1');
     // First poll fires without a sleep — just flush microtasks.
     await Promise.resolve();
     await Promise.resolve();
@@ -91,7 +91,7 @@ describe('pollUnlockStatus', () => {
   it('returns true when second poll finds UNLOCKED (first was LOCKED)', async () => {
     mockGetUnlockStatus.mockResolvedValueOnce(LOCKED_STATUS).mockResolvedValueOnce(UNLOCKED_STATUS);
 
-    const resultPromise = pollUnlockStatus('room-1', 'UNLOCKED');
+    const resultPromise = pollUnlockStatus('room-1');
 
     // First poll
     await Promise.resolve();
@@ -113,7 +113,7 @@ describe('pollUnlockStatus', () => {
       .mockResolvedValueOnce(LOCKED_STATUS)
       .mockResolvedValueOnce(UNLOCKED_STATUS);
 
-    const resultPromise = pollUnlockStatus('room-1', 'UNLOCKED');
+    const resultPromise = pollUnlockStatus('room-1');
 
     await Promise.resolve();
     await Promise.resolve();
@@ -132,7 +132,7 @@ describe('pollUnlockStatus', () => {
   it('returns false after all three polls return LOCKED', async () => {
     mockGetUnlockStatus.mockResolvedValue(LOCKED_STATUS);
 
-    const resultPromise = pollUnlockStatus('room-1', 'UNLOCKED');
+    const resultPromise = pollUnlockStatus('room-1');
 
     // Three polls, two sleeps in between (plus the sleep after the 3rd)
     await Promise.resolve();
@@ -155,7 +155,29 @@ describe('pollUnlockStatus', () => {
   it('returns true immediately when first poll finds EXEMPT', async () => {
     mockGetUnlockStatus.mockResolvedValue(EXEMPT_STATUS);
 
-    const resultPromise = pollUnlockStatus('room-1', 'EXEMPT');
+    const resultPromise = pollUnlockStatus('room-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const result = await resultPromise;
+    expect(result).toBe(true);
+    expect(mockGetUnlockStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns true when LOCKED caller sees baseUnlocked=true (ROOM_UNLOCK paid by another member)', async () => {
+    // After a ROOM_UNLOCK payment by anyone, room.baseUnlocked flips to true.
+    // The payer's own callerUnlockState may still be LOCKED until the webhook
+    // updates the DB, but baseUnlocked=true is sufficient to unblock.
+    const roomUnlockedStatus: UnlockStatusDto = {
+      callerUnlockState: 'LOCKED',
+      baseUnlocked: true,
+      baseUnlockPending: false,
+      memberUnlockPending: false,
+      amountDue: null,
+    };
+    mockGetUnlockStatus.mockResolvedValue(roomUnlockedStatus);
+
+    const resultPromise = pollUnlockStatus('room-1');
     await Promise.resolve();
     await Promise.resolve();
 
@@ -167,7 +189,7 @@ describe('pollUnlockStatus', () => {
   it('calls getUnlockStatus with the correct roomId', async () => {
     mockGetUnlockStatus.mockResolvedValue(UNLOCKED_STATUS);
 
-    const resultPromise = pollUnlockStatus('my-room-xyz', 'UNLOCKED');
+    const resultPromise = pollUnlockStatus('my-room-xyz');
     await Promise.resolve();
     await Promise.resolve();
     await resultPromise;

@@ -51,6 +51,7 @@ const ENDED_ROOM = {
   unlockedAt: null,
   unlockPaymentId: null,
   baseCapacity: 3,
+  memberCountAtEnd: 5, // tier 1 (1–10 members)
   pricingCurrency: 'NGN',
   retentionUntil: new Date('2030-01-01'),
   endsAt: new Date('2026-05-01'),
@@ -203,6 +204,7 @@ function makeService(
 ): {
   service: PaymentsService;
   prisma: ReturnType<typeof makePrisma>;
+  pricing: ReturnType<typeof makePricing>;
   provider: jest.Mocked<PaymentProvider>;
   gateway: ReturnType<typeof makeGateway>;
 } {
@@ -217,7 +219,7 @@ function makeService(
     null, // FlutterwaveClient
     gateway as never,
   );
-  return { service, prisma, provider, gateway };
+  return { service, prisma, pricing, provider, gateway };
 }
 
 // ── initiateBaseUnlock ────────────────────────────────────────────────────────
@@ -331,11 +333,18 @@ describe('initiateRoomUnlock()', () => {
     );
   });
 
-  it('throws HOST_ONLY when caller is not the host', async () => {
-    const { service } = makeService();
-    const err = await service.initiateRoomUnlock(ROOM_ID, GUEST_ID, INPUT).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ForbiddenException);
-    expect((err as ForbiddenException).getResponse()).toMatchObject({ code: 'HOST_ONLY' });
+  it('succeeds for a non-host member — any active member can pay the unified unlock', async () => {
+    // GUEST_ID is not the host; makeService() default membershipFindFirst = EXTRA_MEMBERSHIP_LOCKED
+    const { service } = makeService({ userFindUnique: GUEST_USER });
+    const result = await service.initiateRoomUnlock(ROOM_ID, GUEST_ID, INPUT);
+    expect(result.paymentId).toBe('payment-1');
+  });
+
+  it('throws NOT_MEMBER when caller has no active membership', async () => {
+    const { service } = makeService({ membershipFindFirst: null });
+    await expect(service.initiateRoomUnlock(ROOM_ID, GUEST_ID, INPUT)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('throws ROOM_STILL_ACTIVE when room is not ENDED', async () => {
@@ -361,10 +370,14 @@ describe('initiateRoomUnlock()', () => {
     expect((err as ConflictException).getResponse()).toMatchObject({ code: 'ALREADY_UNLOCKED' });
   });
 
-  it('creates a ROOM_UNLOCK Payment row and returns PaymentInitDto on success', async () => {
-    const { service, prisma } = makeService({ userFindUnique: HOST_USER });
+  it('creates a ROOM_UNLOCK Payment row, prices via tier lookup, and returns PaymentInitDto', async () => {
+    const { service, prisma, pricing } = makeService({ userFindUnique: HOST_USER });
     const result = await service.initiateRoomUnlock(ROOM_ID, HOST_ID, INPUT);
 
+    // Verify pricing service received ROOM_UNLOCK purpose + memberCountAtEnd=5 (tier 1)
+    expect(pricing.quote).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: 'ROOM_UNLOCK', memberCountAtEnd: 5 }),
+    );
     expect(prisma.payment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -380,7 +393,7 @@ describe('initiateRoomUnlock()', () => {
       paymentId: 'payment-1',
       authorizationUrl: 'https://checkout.paystack.com/test',
       providerRef: 'sher_fake-ref',
-      amountMinor: 150_000,
+      amountMinor: 150_000, // mocked pricing.quote return value
       currency: 'NGN',
       provider: 'PAYSTACK',
     });
@@ -535,30 +548,33 @@ describe('getUnlockStatus()', () => {
     await expect(service.getUnlockStatus(ROOM_ID, HOST_ID)).rejects.toThrow(NotFoundException);
   });
 
-  it('returns amountDue=BASE_UNLOCK when host is LOCKED', async () => {
+  it('returns amountDue=ROOM_UNLOCK (tier amount) for any LOCKED member in ENDED room', async () => {
+    // ENDED_ROOM has memberCountAtEnd=5 → tier 1. Pricing is mocked (returns 150_000).
     const { service } = makeService({
       membershipFindFirst: HOST_MEMBERSHIP,
     });
     const result = await service.getUnlockStatus(ROOM_ID, HOST_ID);
     expect(result.callerUnlockState).toBe('LOCKED');
-    expect(result.amountDue).toMatchObject({ purpose: 'BASE_UNLOCK', amountMinor: 150_000 });
+    expect(result.amountDue).toMatchObject({ purpose: 'ROOM_UNLOCK', amountMinor: 150_000 });
   });
 
-  it('returns amountDue=MEMBER_UNLOCK when extra member is LOCKED', async () => {
+  it('returns amountDue=ROOM_UNLOCK for extra member LOCKED in ENDED room', async () => {
     const { service } = makeService({
       membershipFindFirst: EXTRA_MEMBERSHIP_LOCKED,
     });
     const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
     expect(result.callerUnlockState).toBe('LOCKED');
-    expect(result.amountDue).toMatchObject({ purpose: 'MEMBER_UNLOCK' });
+    expect(result.amountDue).toMatchObject({ purpose: 'ROOM_UNLOCK' });
   });
 
-  it('returns amountDue=null when covered non-host member is LOCKED (waiting for host)', async () => {
+  it('returns amountDue=ROOM_UNLOCK for covered non-host member LOCKED in ENDED room', async () => {
+    // Previously null (covered member "waited for host"). Now any LOCKED member
+    // can trigger ROOM_UNLOCK, so amountDue is always surfaced for ENDED rooms.
     const { service } = makeService({
       membershipFindFirst: EXEMPT_MEMBERSHIP, // joinOrder=2, not host
     });
     const result = await service.getUnlockStatus(ROOM_ID, GUEST_ID);
-    expect(result.amountDue).toBeNull();
+    expect(result.amountDue).toMatchObject({ purpose: 'ROOM_UNLOCK' });
   });
 
   it('returns amountDue=null when caller is UNLOCKED', async () => {

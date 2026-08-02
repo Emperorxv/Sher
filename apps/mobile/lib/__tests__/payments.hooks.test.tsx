@@ -23,6 +23,7 @@ jest.mock('../api', () => ({
     payments: {
       initiateBaseUnlock: jest.fn(),
       initiateMemberUnlock: jest.fn(),
+      initiateRoomUnlock: jest.fn(),
       initiateRetentionExtension: jest.fn(),
       getUnlockStatus: jest.fn(),
       getPaymentHistory: jest.fn(),
@@ -41,6 +42,7 @@ import {
   paymentKeys,
   useInitiateBaseUnlock,
   useInitiateMemberUnlock,
+  useInitiateRoomUnlock,
   usePaymentHistory,
   useUnlockStatus,
 } from '../payments';
@@ -53,6 +55,7 @@ import { apiClient } from '../api';
 const mockPayments = (apiClient as any).payments as {
   initiateBaseUnlock: jest.Mock;
   initiateMemberUnlock: jest.Mock;
+  initiateRoomUnlock: jest.Mock;
   initiateRetentionExtension: jest.Mock;
   getUnlockStatus: jest.Mock;
   getPaymentHistory: jest.Mock;
@@ -60,6 +63,7 @@ const mockPayments = (apiClient as any).payments as {
 
 const mockInitiateBaseUnlock = mockPayments.initiateBaseUnlock;
 const mockInitiateMemberUnlock = mockPayments.initiateMemberUnlock;
+const mockInitiateRoomUnlock = mockPayments.initiateRoomUnlock;
 const mockGetUnlockStatus = mockPayments.getUnlockStatus;
 const mockGetPaymentHistory = mockPayments.getPaymentHistory;
 
@@ -244,6 +248,80 @@ describe('useInitiateMemberUnlock', () => {
         await result.current.mutateAsync({});
       }),
     ).rejects.toMatchObject({ code: 'NOT_MEMBER' });
+  });
+});
+
+// ── useInitiateRoomUnlock ─────────────────────────────────────────────────────
+
+describe('useInitiateRoomUnlock', () => {
+  it('happy path: mutateAsync resolves with PaymentInitDto (tier-1 amount)', async () => {
+    const roomUnlockInit: PaymentInitDto = {
+      ...MOCK_PAYMENT_INIT,
+      amountMinor: 700_000,
+      amountDisplay: '₦7,000.00',
+    };
+    mockInitiateRoomUnlock.mockResolvedValue(roomUnlockInit);
+
+    const { result } = renderHook(() => useInitiateRoomUnlock('room-1'), {
+      wrapper: createWrapper(),
+    });
+
+    let resolved: PaymentInitDto | undefined;
+    await act(async () => {
+      resolved = await result.current.mutateAsync({});
+    });
+
+    expect(mockInitiateRoomUnlock).toHaveBeenCalledWith('room-1', {});
+    expect(resolved!.amountMinor).toBe(700_000);
+    expect(resolved!.amountDisplay).toBe('₦7,000.00');
+    expect(resolved!.authorizationUrl).toBe('https://checkout.paystack.com/xyz');
+  });
+
+  it('sends FLUTTERWAVE provider when specified', async () => {
+    mockInitiateRoomUnlock.mockResolvedValue({
+      ...MOCK_PAYMENT_INIT,
+      provider: 'FLUTTERWAVE',
+    });
+
+    const { result } = renderHook(() => useInitiateRoomUnlock('room-1'), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ provider: 'FLUTTERWAVE' });
+    });
+
+    expect(mockInitiateRoomUnlock).toHaveBeenCalledWith('room-1', { provider: 'FLUTTERWAVE' });
+  });
+
+  it('error path: NOT_MEMBER surfaces from ApiError.code', async () => {
+    const err = { status: 404, code: 'NOT_MEMBER', message: 'Not a member' };
+    mockInitiateRoomUnlock.mockRejectedValue(err);
+
+    const { result } = renderHook(() => useInitiateRoomUnlock('room-1'), {
+      wrapper: createWrapper(),
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({});
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_MEMBER' });
+  });
+
+  it('ROOM_STILL_ACTIVE error surfaces correctly', async () => {
+    const err = { status: 422, code: 'ROOM_STILL_ACTIVE', message: 'Room still active' };
+    mockInitiateRoomUnlock.mockRejectedValue(err);
+
+    const { result } = renderHook(() => useInitiateRoomUnlock('room-1'), {
+      wrapper: createWrapper(),
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({});
+      }),
+    ).rejects.toMatchObject({ code: 'ROOM_STILL_ACTIVE' });
   });
 });
 

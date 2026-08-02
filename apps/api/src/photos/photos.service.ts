@@ -132,10 +132,12 @@ export class PhotosService {
     cursor?: string,
     limit = 30,
   ): Promise<PhotoListResponseDto> {
-    const { membership, room } = await this.getMembershipAndRoom(roomId, userId);
+    const { room } = await this.getMembershipAndRoom(roomId, userId);
 
-    // Paywall: LOCKED membership in an ENDED room sees nothing
-    if (room.status === RoomStatus.ENDED && membership.unlockState === 'LOCKED') {
+    // Paywall: gallery is locked until a ROOM_UNLOCK or BASE_UNLOCK payment succeeds.
+    // Check room-level unlock fact only; individual membership.unlockState is not the gate.
+    const isUnlocked = room.unlockedAt !== null || room.baseUnlockedAt !== null;
+    if (room.status === RoomStatus.ENDED && !isUnlocked) {
       return { data: [], meta: { locked: true, nextCursor: null } };
     }
 
@@ -160,9 +162,10 @@ export class PhotosService {
   // ── Single photo ────────────────────────────────────────────────────────────
 
   async getPhoto(roomId: string, photoId: string, userId: string): Promise<PhotoDetailDto> {
-    const { membership, room } = await this.getMembershipAndRoom(roomId, userId);
+    const { room } = await this.getMembershipAndRoom(roomId, userId);
 
-    if (room.status === RoomStatus.ENDED && membership.unlockState === 'LOCKED') {
+    const isUnlocked = room.unlockedAt !== null || room.baseUnlockedAt !== null;
+    if (room.status === RoomStatus.ENDED && !isUnlocked) {
       throw new ForbiddenException({
         code: 'GALLERY_LOCKED',
         message: 'Unlock the gallery to view photos.',

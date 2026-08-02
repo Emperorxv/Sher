@@ -105,20 +105,21 @@ describe('render', () => {
     expect(calledProps.source.uri).toBe('https://checkout.paystack.com/xyz');
   });
 
-  it('shows purpose label in header for BASE_UNLOCK', () => {
-    const { getByText } = render(<CheckoutScreen />);
-    expect(getByText('Unlock gallery for everyone')).toBeTruthy();
-  });
-
-  it('shows purpose label in header for MEMBER_UNLOCK', () => {
+  it('shows ROOM_UNLOCK purpose label in header', () => {
     mockUseLocalSearchParams.mockReturnValueOnce({
       paymentRef: 'sher_abc123',
       roomId: 'room-test-1',
       authorizationUrl: 'https://checkout.paystack.com/xyz',
-      purpose: 'MEMBER_UNLOCK',
+      purpose: 'ROOM_UNLOCK',
     });
     const { getByText } = render(<CheckoutScreen />);
-    expect(getByText('Unlock your gallery access')).toBeTruthy();
+    expect(getByText('Unlock photos for everyone')).toBeTruthy();
+  });
+
+  it('shows fallback label for non-ROOM_UNLOCK purposes', () => {
+    // e.g. RETENTION_EXTENSION retains the generic label
+    const { getByText } = render(<CheckoutScreen />);
+    expect(getByText('Unlock gallery access')).toBeTruthy();
   });
 
   it('shows Close button', () => {
@@ -135,9 +136,7 @@ describe('WebView URL interception', () => {
     const { getByLabelText, getByText } = render(<CheckoutScreen />);
 
     fireEvent.press(getByLabelText('Close checkout'));
-    await waitFor(() =>
-      expect(mockPollUnlockStatus).toHaveBeenCalledWith('room-test-1', 'UNLOCKED'),
-    );
+    await waitFor(() => expect(mockPollUnlockStatus).toHaveBeenCalledWith('room-test-1'));
     await waitFor(() => expect(getByText('Still processing')).toBeTruthy());
   });
 
@@ -235,9 +234,7 @@ describe('deep link', () => {
       rerender(<CheckoutScreen />);
     });
 
-    await waitFor(() =>
-      expect(mockPollUnlockStatus).toHaveBeenCalledWith('room-test-1', 'UNLOCKED'),
-    );
+    await waitFor(() => expect(mockPollUnlockStatus).toHaveBeenCalledWith('room-test-1'));
     await waitFor(() =>
       expect(mockRouterReplace).toHaveBeenCalledWith({
         pathname: '/(app)/rooms/[id]',

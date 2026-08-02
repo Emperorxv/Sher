@@ -22,7 +22,6 @@ type UiState = 'idle' | 'initiating' | 'failed_paystack' | 'failed_other';
 
 export type PaywallSheetProps = {
   pricing: { amountMinor: number; currency: string; amountDisplay: string };
-  purpose: 'BASE_UNLOCK' | 'MEMBER_UNLOCK';
   /** Called with the chosen provider when the user taps a payment button.
    *  Must return a Promise so the sheet can track in-flight state and catch
    *  errors to map them to user-facing messages. */
@@ -32,15 +31,9 @@ export type PaywallSheetProps = {
 
 // ── Copy ────────────────────────────────────────────────────────────────────
 
-const COPY: Record<'BASE_UNLOCK' | 'MEMBER_UNLOCK', { title: string; subtitle: string }> = {
-  BASE_UNLOCK: {
-    title: 'Unlock the gallery for everyone',
-    subtitle: 'As host, your payment opens the photos for the first 3 members.',
-  },
-  MEMBER_UNLOCK: {
-    title: 'Unlock the gallery to view photos',
-    subtitle: 'Pay once to access your copy of the gallery.',
-  },
+const COPY = {
+  title: 'Unlock photos for everyone',
+  subtitle: 'Any member can pay — it opens the gallery for the whole room.',
 };
 
 // ── Error mapping ────────────────────────────────────────────────────────────
@@ -55,8 +48,6 @@ export const ERROR_MESSAGES: Record<string, string> = {
   FLUTTERWAVE_UNAVAILABLE: "Couldn't reach Flutterwave. Try again in a moment.",
   ALREADY_UNLOCKED: 'This room is already unlocked.',
   ROOM_STILL_ACTIVE: 'This room is still active. Unlock will be available when it ends.',
-  HOST_ONLY: 'Only the room host can unlock.',
-  SELF_ONLY: 'You can only pay for your own access.',
   network: 'Connection lost. Check your network and try again.',
   unknown: 'Something went wrong. Please try again.',
 };
@@ -75,11 +66,10 @@ function resolveError(err: unknown): { nextState: UiState; message: string } {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function PaywallSheet({ pricing, purpose, onPay, onDismiss }: PaywallSheetProps) {
+export function PaywallSheet({ pricing, onPay, onDismiss }: PaywallSheetProps) {
   const [uiState, setUiState] = useState<UiState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const copy = COPY[purpose];
   const isInitiating = uiState === 'initiating';
   const showFlutterwave = uiState === 'failed_paystack';
 
@@ -122,8 +112,8 @@ export function PaywallSheet({ pricing, purpose, onPay, onDismiss }: PaywallShee
 
         <Text style={styles.amount}>{pricing.amountDisplay}</Text>
 
-        <Text style={styles.title}>{copy.title}</Text>
-        <Text style={styles.subtitle}>{copy.subtitle}</Text>
+        <Text style={styles.title}>{COPY.title}</Text>
+        <Text style={styles.subtitle}>{COPY.subtitle}</Text>
 
         {errorMsg !== null ? (
           <Text style={styles.error} accessibilityRole="alert">

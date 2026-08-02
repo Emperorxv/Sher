@@ -28,8 +28,17 @@ const ACTIVE_ROOM = {
   id: ROOM_ID,
   status: RoomStatus.ACTIVE,
   endsAt: new Date('2099-12-31'),
+  baseUnlockedAt: null,
+  unlockedAt: null,
 };
 const ENDED_ROOM = { ...ACTIVE_ROOM, status: RoomStatus.ENDED };
+// Room where a ROOM_UNLOCK payment succeeded — unlockedAt is set.
+const ENDED_ROOM_ROOM_UNLOCKED = { ...ENDED_ROOM, unlockedAt: new Date('2026-06-02T10:00:00Z') };
+// Room where the legacy BASE_UNLOCK payment succeeded — baseUnlockedAt is set.
+const ENDED_ROOM_BASE_UNLOCKED = {
+  ...ENDED_ROOM,
+  baseUnlockedAt: new Date('2026-06-02T10:00:00Z'),
+};
 
 const MEMBERSHIP_UNLOCKED = {
   id: 'mem-1',
@@ -239,10 +248,24 @@ describe('PhotosService.listPhotos', () => {
     expect(result.data).toHaveLength(1);
   });
 
-  it('returns photos for EXEMPT member in ENDED room', async () => {
+  it('returns photos for EXEMPT member when BASE_UNLOCK was paid (baseUnlockedAt set)', async () => {
+    // EXEMPT memberships exist only when BASE_UNLOCK succeeded, so baseUnlockedAt is set.
     const svc = makeService({
       membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_EXEMPT) },
-      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM) },
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_BASE_UNLOCKED) },
+    });
+    const result = await svc.listPhotos(ROOM_ID, USER_ID);
+
+    expect(result.meta.locked).toBe(false);
+    expect(result.data).toHaveLength(1);
+  });
+
+  it('returns photos for LOCKED membership when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
+    // Core new assertion: room-level unlock makes gallery visible even when
+    // individual membership.unlockState is still LOCKED.
+    const svc = makeService({
+      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_LOCKED) },
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
     });
     const result = await svc.listPhotos(ROOM_ID, USER_ID);
 
@@ -289,7 +312,8 @@ describe('PhotosService.getPhoto', () => {
     expect(result.originalUrl).toBe('https://r2.example.com/original');
   });
 
-  it('throws 403 for LOCKED member in ENDED room', async () => {
+  it('throws 403 (GALLERY_LOCKED) when room has no unlock payment yet', async () => {
+    // ENDED_ROOM has baseUnlockedAt: null and unlockedAt: null — gallery locked.
     const svc = makeService({
       membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_LOCKED) },
       room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM) },

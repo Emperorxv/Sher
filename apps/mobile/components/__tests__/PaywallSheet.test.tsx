@@ -34,7 +34,6 @@ const MEMBER_PRICING: PaywallSheetProps['pricing'] = {
 function renderSheet(overrides: Partial<PaywallSheetProps> = {}) {
   const defaults: PaywallSheetProps = {
     pricing: BASE_PRICING,
-    purpose: 'BASE_UNLOCK',
     onPay: jest.fn().mockResolvedValue(undefined),
     onDismiss: jest.fn(),
   };
@@ -49,14 +48,14 @@ beforeEach(() => {
 // ── Render tests ──────────────────────────────────────────────────────────────
 
 describe('render', () => {
-  it('BASE_UNLOCK: shows correct title copy', () => {
-    const { getByText } = renderSheet({ purpose: 'BASE_UNLOCK' });
-    expect(getByText('Unlock the gallery for everyone')).toBeTruthy();
+  it('shows unified title copy for all callers', () => {
+    const { getByText } = renderSheet();
+    expect(getByText('Unlock photos for everyone')).toBeTruthy();
   });
 
-  it('MEMBER_UNLOCK: shows correct title copy', () => {
-    const { getByText } = renderSheet({ purpose: 'MEMBER_UNLOCK' });
-    expect(getByText('Unlock the gallery to view photos')).toBeTruthy();
+  it('shows unified subtitle copy', () => {
+    const { getByText } = renderSheet();
+    expect(getByText('Any member can pay — it opens the gallery for the whole room.')).toBeTruthy();
   });
 
   it('displays the formatted amount from pricing prop', () => {
@@ -216,18 +215,12 @@ describe('error mapping', () => {
     );
   });
 
-  it('HOST_ONLY → correct message', async () => {
+  it('unknown code falls through to generic message', async () => {
     const onPay = jest.fn().mockRejectedValue({ code: 'HOST_ONLY' });
     const { getByText } = renderSheet({ onPay });
     fireEvent.press(getByText('Pay with Paystack'));
-    await waitFor(() => expect(getByText('Only the room host can unlock.')).toBeTruthy());
-  });
-
-  it('SELF_ONLY → correct message', async () => {
-    const onPay = jest.fn().mockRejectedValue({ code: 'SELF_ONLY' });
-    const { getByText } = renderSheet({ onPay });
-    fireEvent.press(getByText('Pay with Paystack'));
-    await waitFor(() => expect(getByText('You can only pay for your own access.')).toBeTruthy());
+    // HOST_ONLY is no longer a valid server code; maps to generic fallback
+    await waitFor(() => expect(getByText('Something went wrong. Please try again.')).toBeTruthy());
   });
 
   it('no code (network error) → correct message', async () => {

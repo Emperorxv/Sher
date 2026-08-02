@@ -82,8 +82,7 @@ jest.mock('../../lib/rooms', () => ({
 // lib/payments: payment hooks — prevent real API calls
 jest.mock('../../lib/payments', () => ({
   useUnlockStatus: jest.fn(() => ({ data: null })),
-  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
-  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useInitiateRoomUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
 }));
 
 // lib/socket: prevent real WebSocket connections

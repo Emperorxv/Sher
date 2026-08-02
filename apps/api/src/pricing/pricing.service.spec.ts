@@ -1,5 +1,5 @@
 import { PricingService } from './pricing.service';
-import { PRICE_BOOK } from './price-book';
+import { PRICE_BOOK, ROOM_UNLOCK_TIERS } from './price-book';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,25 @@ describe('PricingService.quote()', () => {
       const result = svc.quote({ currency, purpose });
       expect(result.amountMinor).toBe(expectedMinor);
       expect(result.currency).toBe(currency);
+      expect(result.display).toBe(expectedDisplay);
+    },
+  );
+
+  // ── ROOM_UNLOCK tiers ──────────────────────────────────────────────────────
+
+  it.each([
+    [1, 'USD', ROOM_UNLOCK_TIERS[0]!.prices.USD, '$4.99'],
+    [10, 'USD', ROOM_UNLOCK_TIERS[0]!.prices.USD, '$4.99'], // tier 1 upper boundary
+    [11, 'USD', ROOM_UNLOCK_TIERS[1]!.prices.USD, '$9.99'], // tier 2 lower boundary
+    [35, 'NGN', ROOM_UNLOCK_TIERS[1]!.prices.NGN, '₦14,000.00'], // tier 2 upper boundary
+    [36, 'USD', ROOM_UNLOCK_TIERS[2]!.prices.USD, '$17.99'], // tier 3 lower boundary
+    [100, 'NGN', ROOM_UNLOCK_TIERS[2]!.prices.NGN, '₦25,000.00'],
+    [0, 'USD', ROOM_UNLOCK_TIERS[0]!.prices.USD, '$4.99'], // 0/null → default tier 1
+  ] as const)(
+    'ROOM_UNLOCK memberCount=%d %s → amountMinor=%d display=%s',
+    (memberCount, currency, expectedMinor, expectedDisplay) => {
+      const result = svc.quote({ currency, purpose: 'ROOM_UNLOCK', memberCountAtEnd: memberCount });
+      expect(result.amountMinor).toBe(expectedMinor);
       expect(result.display).toBe(expectedDisplay);
     },
   );

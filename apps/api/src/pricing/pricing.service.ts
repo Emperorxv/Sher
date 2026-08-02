@@ -5,6 +5,7 @@ import {
   CURRENCY_SYMBOLS,
   MINOR_UNIT_DIVISOR,
   PRICE_BOOK,
+  getRoomUnlockTierAmount,
   isSupportedCurrency,
 } from './price-book';
 
@@ -42,13 +43,20 @@ const COUNTRY_CURRENCY: Record<string, SupportedCurrency> = {
 
 // ── Input types ───────────────────────────────────────────────────────────────
 
-export type PaymentPurpose = 'BASE_UNLOCK' | 'MEMBER_UNLOCK' | 'RETENTION_MONTH' | 'RETENTION_YEAR';
+export type PaymentPurpose =
+  | 'BASE_UNLOCK'
+  | 'MEMBER_UNLOCK'
+  | 'ROOM_UNLOCK'
+  | 'RETENTION_MONTH'
+  | 'RETENTION_YEAR';
 
 export interface QuoteInput {
   currency: SupportedCurrency;
   purpose: PaymentPurpose;
   /** Required when purpose is RETENTION_MONTH; ignored otherwise */
   retentionMonths?: number;
+  /** Required when purpose is ROOM_UNLOCK — selects the pricing tier */
+  memberCountAtEnd?: number;
 }
 
 export interface QuoteResult {
@@ -91,6 +99,9 @@ export class PricingService {
         break;
       case 'RETENTION_MONTH':
         amountMinor = row.retentionMonth * (input.retentionMonths ?? 1);
+        break;
+      case 'ROOM_UNLOCK':
+        amountMinor = getRoomUnlockTierAmount(input.memberCountAtEnd ?? 1, input.currency);
         break;
       case 'RETENTION_YEAR':
         amountMinor = row.retentionYear;

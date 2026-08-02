@@ -104,12 +104,11 @@ export class PaymentsService {
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('ROOM_NOT_FOUND');
 
-    if (room.hostId !== callerId) {
-      throw new ForbiddenException({
-        code: 'HOST_ONLY',
-        message: 'Only the room host can initiate the room unlock.',
-      });
-    }
+    // Any active member of the room can pay the unified unlock fee.
+    const membership = await this.prisma.membership.findFirst({
+      where: { roomId, userId: callerId, leftAt: null },
+    });
+    if (!membership) throw new NotFoundException('NOT_MEMBER');
 
     if (room.status !== RoomStatus.ENDED) {
       throw new UnprocessableEntityException({
@@ -132,7 +131,13 @@ export class PaymentsService {
       purpose: PaymentPurpose.ROOM_UNLOCK,
       currency: room.pricingCurrency as SupportedCurrency,
       providerName: input.provider,
-      pricingArgs: { currency: room.pricingCurrency as SupportedCurrency, purpose: 'BASE_UNLOCK' },
+      pricingArgs: {
+        currency: room.pricingCurrency as SupportedCurrency,
+        purpose: 'ROOM_UNLOCK',
+        // memberCountAtEnd is null only for rooms created before this schema change;
+        // default to 1 so those rooms fall into tier 1 (cheapest).
+        memberCountAtEnd: room.memberCountAtEnd ?? 1,
+      },
       metadata: { roomId, purpose: 'ROOM_UNLOCK' },
     });
   }
@@ -260,30 +265,19 @@ export class PaymentsService {
     const callerUnlockState = membership.unlockState as UnlockStatusDto['callerUnlockState'];
 
     let amountDue: AmountDueDto | null = null;
-    if (callerUnlockState === 'LOCKED') {
-      const isHost = callerId === room.hostId;
-      const isExtraMember = membership.joinOrder > room.baseCapacity;
-      if (isHost) {
-        const quote = this.pricing.quote({
-          currency: room.pricingCurrency as SupportedCurrency,
-          purpose: 'BASE_UNLOCK',
-        });
-        amountDue = {
-          amountMinor: quote.amountMinor,
-          amountDisplay: quote.display,
-          purpose: 'BASE_UNLOCK',
-        };
-      } else if (isExtraMember) {
-        const quote = this.pricing.quote({
-          currency: room.pricingCurrency as SupportedCurrency,
-          purpose: 'MEMBER_UNLOCK',
-        });
-        amountDue = {
-          amountMinor: quote.amountMinor,
-          amountDisplay: quote.display,
-          purpose: 'MEMBER_UNLOCK',
-        };
-      }
+    if (callerUnlockState === 'LOCKED' && room.status === RoomStatus.ENDED) {
+      // Any LOCKED member in an ENDED room sees the unified ROOM_UNLOCK tier price.
+      // The tier is determined by the frozen memberCountAtEnd snapshot.
+      const quote = this.pricing.quote({
+        currency: room.pricingCurrency as SupportedCurrency,
+        purpose: 'ROOM_UNLOCK',
+        memberCountAtEnd: room.memberCountAtEnd ?? 1,
+      });
+      amountDue = {
+        amountMinor: quote.amountMinor,
+        amountDisplay: quote.display,
+        purpose: 'ROOM_UNLOCK',
+      };
     }
 
     return {

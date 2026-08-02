@@ -57,13 +57,14 @@ jest.mock('../../lib/rooms', () => ({
 }));
 
 const mockUseUnlockStatus = jest.fn();
-const mockInitiateBase = jest.fn();
-const mockInitiateMember = jest.fn();
+const mockInitiateRoomUnlock = jest.fn();
 
 jest.mock('../../lib/payments', () => ({
   useUnlockStatus: (...args: unknown[]) => mockUseUnlockStatus(...args),
-  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: mockInitiateBase, isPending: false })),
-  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: mockInitiateMember, isPending: false })),
+  useInitiateRoomUnlock: jest.fn(() => ({
+    mutateAsync: mockInitiateRoomUnlock,
+    isPending: false,
+  })),
 }));
 
 jest.mock('../../stores/auth', () => ({
@@ -223,23 +224,22 @@ beforeEach(() => {
   mockUseRoom.mockReturnValue({ data: ENDED_ROOM, isLoading: false });
   mockUseRoomMembers.mockReturnValue({ data: { items: HOST_MEMBERS, total: 2 } });
   mockUseRoomPricing.mockReturnValue({ data: PRICING });
-  mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'LOCKED' } });
-  mockInitiateBase.mockResolvedValue({
-    providerRef: 'sher_base_ref',
-    authorizationUrl: 'https://checkout.paystack.com/base',
-    paymentId: 'pay-1',
-    amountMinor: 150_000,
-    currency: 'NGN',
-    amountDisplay: '₦1,500.00',
-    provider: 'PAYSTACK',
+  mockUseUnlockStatus.mockReturnValue({
+    data: {
+      callerUnlockState: 'LOCKED',
+      baseUnlocked: false,
+      baseUnlockPending: false,
+      memberUnlockPending: false,
+      amountDue: { amountMinor: 700_000, amountDisplay: '₦7,000.00', purpose: 'ROOM_UNLOCK' },
+    },
   });
-  mockInitiateMember.mockResolvedValue({
-    providerRef: 'sher_member_ref',
-    authorizationUrl: 'https://checkout.paystack.com/member',
-    paymentId: 'pay-2',
-    amountMinor: 100_000,
+  mockInitiateRoomUnlock.mockResolvedValue({
+    providerRef: 'sher_room_ref',
+    authorizationUrl: 'https://checkout.paystack.com/room',
+    paymentId: 'pay-1',
+    amountMinor: 700_000,
     currency: 'NGN',
-    amountDisplay: '₦1,000.00',
+    amountDisplay: '₦7,000.00',
     provider: 'PAYSTACK',
   });
 
@@ -260,46 +260,48 @@ async function renderAndWaitForSubscription(qc: QueryClient) {
 // ── Render tests ──────────────────────────────────────────────────────────────
 
 describe('PaywallSheet render', () => {
-  it('auto-opens for host when room is ended and caller is LOCKED', async () => {
+  it('auto-opens for any LOCKED member when room is ended', async () => {
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('Unlock the gallery for everyone')).toBeTruthy());
+    await waitFor(() => expect(getByText('Unlock photos for everyone')).toBeTruthy());
   });
 
-  it('auto-opens with BASE_UNLOCK purpose for host', async () => {
+  it('shows tier amount from unlockStatus.amountDue.amountDisplay', async () => {
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('₦1,500.00')).toBeTruthy());
+    await waitFor(() => expect(getByText('₦7,000.00')).toBeTruthy());
   });
 
-  it('auto-opens with MEMBER_UNLOCK purpose for extra member', async () => {
+  it('auto-opens with unified ROOM_UNLOCK copy for extra member', async () => {
     mockUseAuthStore.mockReturnValue({ user: { id: 'user-extra-1' } });
     mockUseRoomMembers.mockReturnValue({ data: { items: EXTRA_MEMBERS, total: 2 } });
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('Unlock the gallery to view photos')).toBeTruthy());
-    expect(getByText('₦1,000.00')).toBeTruthy();
+    await waitFor(() => expect(getByText('Unlock photos for everyone')).toBeTruthy());
+    expect(getByText('₦7,000.00')).toBeTruthy();
   });
 
   it('does NOT auto-open when callerUnlockState is EXEMPT', async () => {
-    mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'EXEMPT' } });
+    mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'EXEMPT', amountDue: null } });
     const qc = makeQc();
     const { queryByText } = await renderAndWaitForSubscription(qc);
     // Allow effects to settle
     await act(async () => {
       await Promise.resolve();
     });
-    expect(queryByText('Unlock the gallery for everyone')).toBeNull();
+    expect(queryByText('Unlock photos for everyone')).toBeNull();
   });
 
   it('does NOT auto-open when callerUnlockState is UNLOCKED', async () => {
-    mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'UNLOCKED' } });
+    mockUseUnlockStatus.mockReturnValue({
+      data: { callerUnlockState: 'UNLOCKED', amountDue: null },
+    });
     const qc = makeQc();
     const { queryByText } = await renderAndWaitForSubscription(qc);
     await act(async () => {
       await Promise.resolve();
     });
-    expect(queryByText('Unlock the gallery for everyone')).toBeNull();
+    expect(queryByText('Unlock photos for everyone')).toBeNull();
   });
 
   it('does NOT open when room is ACTIVE (paywall only after ENDED)', async () => {
@@ -309,34 +311,42 @@ describe('PaywallSheet render', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(queryByText('Unlock the gallery for everyone')).toBeNull();
+    expect(queryByText('Unlock photos for everyone')).toBeNull();
   });
 });
 
 describe('LockedGalleryPlaceholder', () => {
-  it('shows placeholder for within-capacity locked member (not host, not extra)', async () => {
+  it('shows placeholder in gallery when paywall is not blocking accessibility', async () => {
     mockUseAuthStore.mockReturnValue({ user: { id: 'user-base-1' } });
     mockUseRoomMembers.mockReturnValue({ data: { items: BASE_MEMBERS, total: 2 } });
+    // Use UNLOCKED so the modal doesn't auto-open (accessibilityViewIsModal hides background)
+    mockUseUnlockStatus.mockReturnValue({
+      data: { callerUnlockState: 'UNLOCKED', amountDue: null },
+    });
     const qc = makeQc();
     const { getByLabelText } = await renderAndWaitForSubscription(qc);
     await waitFor(() => expect(getByLabelText('Unlock gallery')).toBeTruthy());
   });
 
-  it('tapping placeholder opens PaywallSheet with BASE_UNLOCK', async () => {
+  it('tapping placeholder opens PaywallSheet with unified ROOM_UNLOCK copy', async () => {
     mockUseAuthStore.mockReturnValue({ user: { id: 'user-base-1' } });
     mockUseRoomMembers.mockReturnValue({ data: { items: BASE_MEMBERS, total: 2 } });
+    // Use UNLOCKED so modal is not pre-open and the placeholder is accessible
+    mockUseUnlockStatus.mockReturnValue({
+      data: { callerUnlockState: 'UNLOCKED', amountDue: null },
+    });
     const qc = makeQc();
     const { getByLabelText, getByText } = await renderAndWaitForSubscription(qc);
 
     fireEvent.press(getByLabelText('Unlock gallery'));
-    await waitFor(() => expect(getByText('Unlock the gallery for everyone')).toBeTruthy());
+    await waitFor(() => expect(getByText('Unlock photos for everyone')).toBeTruthy());
   });
 });
 
 // ── Navigation tests ──────────────────────────────────────────────────────────
 
 describe('navigation', () => {
-  it('tapping Pay with Paystack calls initiateBase and navigates to /checkout', async () => {
+  it('tapping Pay with Paystack calls initiateRoomUnlock and navigates to /checkout with purpose=ROOM_UNLOCK', async () => {
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
     await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());
@@ -347,37 +357,14 @@ describe('navigation', () => {
       expect(mockRouterPush).toHaveBeenCalledWith({
         pathname: '/checkout/[paymentRef]',
         params: {
-          paymentRef: 'sher_base_ref',
+          paymentRef: 'sher_room_ref',
           roomId: ROOM_ID,
-          authorizationUrl: 'https://checkout.paystack.com/base',
-          purpose: 'BASE_UNLOCK',
+          authorizationUrl: 'https://checkout.paystack.com/room',
+          purpose: 'ROOM_UNLOCK',
         },
       }),
     );
-    expect(mockInitiateBase).toHaveBeenCalledWith({ provider: 'PAYSTACK' });
-  });
-
-  it('tapping Pay calls initiateMember for extra-member and navigates to /checkout', async () => {
-    mockUseAuthStore.mockReturnValue({ user: { id: 'user-extra-1' } });
-    mockUseRoomMembers.mockReturnValue({ data: { items: EXTRA_MEMBERS, total: 2 } });
-    const qc = makeQc();
-    const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());
-
-    fireEvent.press(getByText('Pay with Paystack'));
-
-    await waitFor(() =>
-      expect(mockRouterPush).toHaveBeenCalledWith({
-        pathname: '/checkout/[paymentRef]',
-        params: {
-          paymentRef: 'sher_member_ref',
-          roomId: ROOM_ID,
-          authorizationUrl: 'https://checkout.paystack.com/member',
-          purpose: 'MEMBER_UNLOCK',
-        },
-      }),
-    );
-    expect(mockInitiateMember).toHaveBeenCalledWith({ provider: 'PAYSTACK' });
+    expect(mockInitiateRoomUnlock).toHaveBeenCalledWith({ provider: 'PAYSTACK' });
   });
 });
 
@@ -443,11 +430,13 @@ describe('photoCount prop', () => {
     // Use a count that differs from the old || 10 fallback so the test catches a regression.
     const ROOM_5 = { ...ENDED_ROOM, photoCount: 5 };
     mockUseRoom.mockReturnValue({ data: ROOM_5, isLoading: false });
-    // User is within base capacity (not auto-opened host), so paywall sheet stays closed
-    // and we can see the LockedGalleryPlaceholder tiles directly.
+    // Use UNLOCKED so the modal doesn't auto-open; accessibilityViewIsModal would
+    // hide tiles behind it, making getAllByLabelText('locked') fail.
     mockUseAuthStore.mockReturnValue({ user: { id: 'user-base-1' } });
     mockUseRoomMembers.mockReturnValue({ data: { items: BASE_MEMBERS, total: 2 } });
-    mockUseUnlockStatus.mockReturnValue({ data: { callerUnlockState: 'LOCKED' } });
+    mockUseUnlockStatus.mockReturnValue({
+      data: { callerUnlockState: 'UNLOCKED', amountDue: null },
+    });
 
     const qc = makeQc();
     const { getAllByLabelText, queryByTestId } = await renderAndWaitForSubscription(qc);
@@ -461,7 +450,7 @@ describe('photoCount prop', () => {
 
 describe('error path', () => {
   it('PAYSTACK_UNAVAILABLE error → PaywallSheet shows Flutterwave fallback button', async () => {
-    mockInitiateBase.mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
+    mockInitiateRoomUnlock.mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
     await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());

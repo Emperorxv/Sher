@@ -201,6 +201,13 @@ export function createApiClient(opts: ApiClientOptions) {
         body,
       }),
 
+    /** POST /v1/rooms/:id/unlock — unified ROOM_UNLOCK; any active member may pay */
+    initiateRoomUnlock: (roomId: string, body: InitiateUnlockBodyDto = {}) =>
+      rawFetch<PaymentInitDto>(`/v1/rooms/${roomId}/unlock`, {
+        method: 'POST',
+        body,
+      }),
+
     /** POST /v1/rooms/:id/retention/extend — extend photo retention */
     initiateRetentionExtension: (roomId: string, body: RetentionExtendBodyDto) =>
       rawFetch<PaymentInitDto>(`/v1/rooms/${roomId}/retention/extend`, {

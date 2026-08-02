@@ -21,6 +21,7 @@ import { colors, fonts, fontSizes, radii, spacing } from '../../theme';
 const PURPOSE_LABELS: Record<PaymentPurpose, string> = {
   BASE_UNLOCK: 'Base unlock',
   MEMBER_UNLOCK: 'Member unlock',
+  ROOM_UNLOCK: 'Room unlock',
   RETENTION_EXTENSION: 'Retention extension',
 };
 

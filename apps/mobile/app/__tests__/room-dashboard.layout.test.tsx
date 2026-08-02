@@ -54,8 +54,7 @@ jest.mock('../../lib/payments', () => ({
   useUnlockStatus: jest.fn(() => ({
     data: { callerUnlockState: 'EXEMPT' }, // host is always EXEMPT
   })),
-  useInitiateBaseUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
-  useInitiateMemberUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useInitiateRoomUnlock: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
 }));
 
 jest.mock('../../stores/auth', () => ({

@@ -59,3 +59,75 @@ export const MINOR_UNIT_DIVISOR: Record<SupportedCurrency, number> = {
 export function isSupportedCurrency(value: string): value is SupportedCurrency {
   return (SUPPORTED_CURRENCIES as readonly string[]).includes(value);
 }
+
+// ── Room-unlock tiered pricing ────────────────────────────────────────────────
+
+/**
+ * Tiered ROOM_UNLOCK prices keyed by room.memberCountAtEnd.
+ *
+ * Anchors: USD and NGN are set by product. The other five currencies are
+ * derived via the same FX-implied ratio used in the BASE_UNLOCK row.
+ *
+ * Tiers (inclusive bounds):
+ *   Tier 1: 1–10 members  → $4.99 / ₦7,000
+ *   Tier 2: 11–35 members → $9.99 / ₦14,000
+ *   Tier 3: 36+  members  → $17.99 / ₦25,000
+ */
+export interface RoomUnlockTier {
+  /** Inclusive upper bound for memberCountAtEnd. Use Infinity for the last tier. */
+  maxMembers: number;
+  prices: Record<SupportedCurrency, number>;
+}
+
+export const ROOM_UNLOCK_TIERS: RoomUnlockTier[] = [
+  {
+    maxMembers: 10,
+    prices: {
+      USD: 499,
+      NGN: 700_000,
+      GHS: 5_900,
+      KES: 64_900,
+      ZAR: 8_900,
+      GBP: 399,
+      EUR: 449,
+    },
+  },
+  {
+    maxMembers: 35,
+    prices: {
+      USD: 999,
+      NGN: 1_400_000,
+      GHS: 11_900,
+      KES: 129_900,
+      ZAR: 17_900,
+      GBP: 799,
+      EUR: 899,
+    },
+  },
+  {
+    maxMembers: Infinity,
+    prices: {
+      USD: 1_799,
+      NGN: 2_500_000,
+      GHS: 21_900,
+      KES: 234_900,
+      ZAR: 32_900,
+      GBP: 1_439,
+      EUR: 1_619,
+    },
+  },
+];
+
+/**
+ * Returns the ROOM_UNLOCK amount in minor units for the given member count and
+ * currency. Falls back to tier 1 when memberCountAtEnd is 0 or null.
+ */
+export function getRoomUnlockTierAmount(
+  memberCountAtEnd: number,
+  currency: SupportedCurrency,
+): number {
+  const tier =
+    ROOM_UNLOCK_TIERS.find((t) => memberCountAtEnd <= t.maxMembers) ??
+    ROOM_UNLOCK_TIERS[ROOM_UNLOCK_TIERS.length - 1]!;
+  return tier.prices[currency];
+}

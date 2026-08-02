@@ -30,6 +30,7 @@ export const paymentKeys = {
  * Initiates a BASE_UNLOCK payment for the given room.
  * roomId is captured at hook creation; mutateAsync accepts the optional body
  * (defaults to PAYSTACK when body is omitted).
+ * @deprecated Use useInitiateRoomUnlock for the unified ROOM_UNLOCK flow.
  */
 export function useInitiateBaseUnlock(roomId: string) {
   const qc = useQueryClient();
@@ -45,12 +46,28 @@ export function useInitiateBaseUnlock(roomId: string) {
 /**
  * Initiates a MEMBER_UNLOCK payment for the calling user in the given room.
  * Same shape as useInitiateBaseUnlock.
+ * @deprecated Use useInitiateRoomUnlock for the unified ROOM_UNLOCK flow.
  */
 export function useInitiateMemberUnlock(roomId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: InitiateUnlockBodyDto = {}) =>
       apiClient.payments.initiateMemberUnlock(roomId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(roomId) });
+    },
+  });
+}
+
+/**
+ * Initiates a ROOM_UNLOCK payment for the given room.
+ * Any active member can pay — the payment unlocks the gallery for the whole room.
+ */
+export function useInitiateRoomUnlock(roomId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: InitiateUnlockBodyDto = {}) =>
+      apiClient.payments.initiateRoomUnlock(roomId, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(roomId) });
     },

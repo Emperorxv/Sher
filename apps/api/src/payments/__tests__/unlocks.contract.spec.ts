@@ -60,6 +60,7 @@ const ENDED_ROOM = {
   hostId: HOST_USER.id,
   status: 'ENDED' as const,
   baseCapacity: 3,
+  memberCountAtEnd: 5, // tier 1 (1–10 members) → ₦7,000 for ROOM_UNLOCK
   baseUnlockedAt: null,
   baseUnlockPaymentId: null,
   unlockedAt: null,
@@ -265,22 +266,38 @@ describe('UnlocksController (contract)', () => {
         paymentId: 'payment-room-unlock-1',
         authorizationUrl: 'https://checkout.paystack.com/test-url',
         providerRef: 'sher_test_ref_001',
-        amountMinor: 150_000, // same tier as BASE_UNLOCK
+        amountMinor: 700_000, // tier 1 (memberCountAtEnd=5): ₦7,000
         currency: 'NGN',
-        amountDisplay: '₦1,500.00',
+        amountDisplay: '₦7,000.00',
         provider: 'PAYSTACK',
       });
     });
 
-    it('403 — non-host caller → HOST_ONLY', async () => {
+    it('201 — non-host member can initiate ROOM_UNLOCK (any active member may pay)', async () => {
+      // guestToken identifies GUEST_USER; membership mock returns HOST_MEMBERSHIP (non-null)
+      // so the NOT_MEMBER check passes; result is a valid PaymentInitDto.
+      mockPrisma.payment.create.mockResolvedValueOnce(MOCK_ROOM_UNLOCK_PAYMENT);
+
       const res = await request(app.getHttpServer())
         .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
         .set('Authorization', `Bearer ${guestToken}`)
         .send({});
 
-      expect(res.status).toBe(HttpStatus.FORBIDDEN);
-      const { error } = res.body as { error: { code: string } };
-      expect(error.code).toBe('HOST_ONLY');
+      expect(res.status).toBe(HttpStatus.CREATED);
+      const { data } = res.body as { data: Record<string, unknown> };
+      expect(data).toMatchObject({ paymentId: 'payment-room-unlock-1' });
+      expect(typeof data['authorizationUrl']).toBe('string');
+    });
+
+    it('404 — non-member → NOT_MEMBER', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValueOnce(null);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/unlock`)
+        .set('Authorization', `Bearer ${guestToken}`)
+        .send({});
+
+      expect(res.status).toBe(HttpStatus.NOT_FOUND);
     });
 
     it('422 — room still active → ROOM_STILL_ACTIVE', async () => {
@@ -498,7 +515,7 @@ describe('UnlocksController (contract)', () => {
   // ── GET /v1/rooms/:id/unlock/status ────────────────────────────────────────
 
   describe('GET /v1/rooms/:id/unlock/status', () => {
-    it('200 — host LOCKED → callerUnlockState=LOCKED, amountDue=BASE_UNLOCK', async () => {
+    it('200 — host LOCKED → callerUnlockState=LOCKED, amountDue=ROOM_UNLOCK tier-1', async () => {
       const res = await request(app.getHttpServer())
         .get(`/v1/rooms/${ENDED_ROOM.id}/unlock/status`)
         .set('Authorization', `Bearer ${hostToken}`);
@@ -512,14 +529,14 @@ describe('UnlocksController (contract)', () => {
         baseUnlockPending: false,
         memberUnlockPending: false,
         amountDue: {
-          amountMinor: 150_000,
-          amountDisplay: '₦1,500.00',
-          purpose: 'BASE_UNLOCK',
+          amountMinor: 700_000, // tier 1 (memberCountAtEnd=5): ₦7,000
+          amountDisplay: '₦7,000.00',
+          purpose: 'ROOM_UNLOCK',
         },
       });
     });
 
-    it('200 — extra member LOCKED → amountDue=MEMBER_UNLOCK', async () => {
+    it('200 — extra member LOCKED → amountDue=ROOM_UNLOCK tier-1 (any member can pay)', async () => {
       mockPrisma.membership.findFirst.mockResolvedValue(EXTRA_MEMBERSHIP_LOCKED);
 
       const res = await request(app.getHttpServer())
@@ -532,14 +549,14 @@ describe('UnlocksController (contract)', () => {
       expect(data).toMatchObject({
         callerUnlockState: 'LOCKED',
         amountDue: {
-          amountMinor: 100_000,
-          amountDisplay: '₦1,000.00',
-          purpose: 'MEMBER_UNLOCK',
+          amountMinor: 700_000,
+          amountDisplay: '₦7,000.00',
+          purpose: 'ROOM_UNLOCK',
         },
       });
     });
 
-    it('200 — covered non-host member LOCKED → amountDue=null (waiting for host)', async () => {
+    it('200 — covered non-host member LOCKED → amountDue=ROOM_UNLOCK tier-1 (can self-pay)', async () => {
       mockPrisma.membership.findFirst.mockResolvedValue(COVERED_MEMBERSHIP);
 
       const res = await request(app.getHttpServer())
@@ -550,7 +567,37 @@ describe('UnlocksController (contract)', () => {
       const { data } = res.body as { data: Record<string, unknown> };
 
       expect(data.callerUnlockState).toBe('LOCKED');
-      expect(data.amountDue).toBeNull();
+      expect(data.amountDue).toEqual({
+        amountMinor: 700_000,
+        amountDisplay: '₦7,000.00',
+        purpose: 'ROOM_UNLOCK',
+      });
+    });
+
+    it('200 — tier 2 (memberCountAtEnd=20) → amountMinor=1_400_000 (₦14,000)', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce({ ...ENDED_ROOM, memberCountAtEnd: 20 });
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/rooms/${ENDED_ROOM.id}/unlock/status`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.OK);
+      const { data } = res.body as { data: Record<string, unknown> };
+
+      expect(data.amountDue).toMatchObject({ amountMinor: 1_400_000, purpose: 'ROOM_UNLOCK' });
+    });
+
+    it('200 — tier 3 (memberCountAtEnd=50) → amountMinor=2_500_000 (₦25,000)', async () => {
+      mockPrisma.room.findUnique.mockResolvedValueOnce({ ...ENDED_ROOM, memberCountAtEnd: 50 });
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/rooms/${ENDED_ROOM.id}/unlock/status`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.OK);
+      const { data } = res.body as { data: Record<string, unknown> };
+
+      expect(data.amountDue).toMatchObject({ amountMinor: 2_500_000, purpose: 'ROOM_UNLOCK' });
     });
 
     it('200 — UNLOCKED member → amountDue=null', async () => {
