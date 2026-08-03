@@ -85,6 +85,7 @@ jest.mock('../../lib/photos', () => ({
     data: { data: [], meta: { locked: false, nextCursor: null } },
     isLoading: false,
   })),
+  useDeletePhoto: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   photoKeys: {
     list: (roomId: string) => ['rooms', roomId, 'photos'],
     detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],

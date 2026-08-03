@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -31,11 +32,21 @@ export type PhotoGalleryProps = {
   photoCount?: number;
   /** Called when user taps the locked placeholder; wires to open PaywallSheet. */
   onUnlockPress?: () => void;
+  /** Current user's ID — used to determine photo ownership for the delete affordance. */
+  currentUserId?: string;
+  /** Called when the current user confirms deletion of one of their own photos. */
+  onDeletePhoto?: (photoId: string) => void;
 };
 
 const COLUMNS = 3;
 
-export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGalleryProps) {
+export function PhotoGallery({
+  roomId,
+  photoCount,
+  onUnlockPress,
+  currentUserId,
+  onDeletePhoto,
+}: PhotoGalleryProps) {
   const router = useRouter();
   const { data, isLoading } = usePhotos(roomId);
   const [reportPhotoId, setReportPhotoId] = useState<string | null>(null);
@@ -70,7 +81,22 @@ export function PhotoGallery({ roomId, photoCount, onUnlockPress }: PhotoGallery
         renderItem={({ item }) => (
           <Pressable
             onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
-            onLongPress={() => setReportPhotoId(item.id)}
+            onLongPress={() => {
+              const isOwn = currentUserId && item.uploaderId === currentUserId && onDeletePhoto;
+              if (isOwn) {
+                Alert.alert('Photo options', '', [
+                  {
+                    text: 'Delete photo',
+                    style: 'destructive',
+                    onPress: () => onDeletePhoto(item.id),
+                  },
+                  { text: 'Report photo', onPress: () => setReportPhotoId(item.id) },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              } else {
+                setReportPhotoId(item.id);
+              }
+            }}
             accessibilityRole="button"
             accessibilityLabel="View photo"
             testID={`photo-tile-${item.id}`}

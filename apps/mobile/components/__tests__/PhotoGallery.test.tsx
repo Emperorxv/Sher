@@ -26,10 +26,22 @@ jest.mock('../../lib/photos', () => ({
   },
 }));
 
+// Stub ReportSheet so long-press tests can verify it opens without pulling in
+// the real lib/reports hook and network dependencies.
+jest.mock('../ReportSheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  return {
+    ReportSheet: ({ visible }: { visible: boolean }) =>
+      visible ? React.createElement('View', { testID: 'mock-report-sheet' }) : null,
+  };
+});
+
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import { usePhotos } from '../../lib/photos';
 import { PhotoGallery } from '../PhotoGallery';
 import type { PhotoListResponseDto } from '@sher/shared-types';
@@ -129,5 +141,89 @@ describe('PhotoGallery', () => {
     const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
     fireEvent.press(getByTestId('photo-tile-photo-1'));
     expect(mockRouterPush).toHaveBeenCalledWith('/rooms/room-1/photo/photo-1');
+  });
+});
+
+// ── Long-press behavior ────────────────────────────────────────────────────────
+
+describe('PhotoGallery — long-press behavior', () => {
+  let alertSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+  });
+
+  it('long-press own photo shows action sheet with Delete, Report, and Cancel options', () => {
+    mockUsePhotos.mockReturnValue({ data: PHOTOS, isLoading: false });
+    const onDeletePhoto = jest.fn();
+
+    const { getByTestId } = render(
+      <PhotoGallery roomId="room-1" currentUserId="user-1" onDeletePhoto={onDeletePhoto} />,
+    );
+
+    fireEvent(getByTestId('photo-tile-photo-1'), 'longPress');
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Photo options',
+      '',
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Delete photo', style: 'destructive' }),
+        expect.objectContaining({ text: 'Report photo' }),
+        expect.objectContaining({ text: 'Cancel', style: 'cancel' }),
+      ]),
+    );
+  });
+
+  it('tapping "Delete photo" in the action sheet calls onDeletePhoto with the photo ID', () => {
+    mockUsePhotos.mockReturnValue({ data: PHOTOS, isLoading: false });
+    const onDeletePhoto = jest.fn();
+    let capturedButtons: Array<{ text: string; style?: string; onPress?: () => void }> = [];
+
+    alertSpy.mockImplementation((_title: string, _msg: string, buttons: typeof capturedButtons) => {
+      capturedButtons = buttons;
+    });
+
+    const { getByTestId } = render(
+      <PhotoGallery roomId="room-1" currentUserId="user-1" onDeletePhoto={onDeletePhoto} />,
+    );
+
+    fireEvent(getByTestId('photo-tile-photo-1'), 'longPress');
+    act(() => {
+      const deleteBtn = capturedButtons.find((b) => b.text === 'Delete photo');
+      deleteBtn?.onPress?.();
+    });
+
+    expect(onDeletePhoto).toHaveBeenCalledWith('photo-1');
+  });
+
+  it("long-press others' photo opens ReportSheet directly — no action sheet", () => {
+    // photo-1 has uploaderId 'user-1'; current user is different → not own photo
+    mockUsePhotos.mockReturnValue({ data: PHOTOS, isLoading: false });
+
+    const { getByTestId } = render(
+      <PhotoGallery roomId="room-1" currentUserId="user-other" onDeletePhoto={jest.fn()} />,
+    );
+
+    fireEvent(getByTestId('photo-tile-photo-1'), 'longPress');
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(getByTestId('mock-report-sheet')).toBeTruthy();
+  });
+
+  it('long-press own photo without onDeletePhoto prop opens ReportSheet directly', () => {
+    // onDeletePhoto not provided → falls through to ReportSheet
+    mockUsePhotos.mockReturnValue({ data: PHOTOS, isLoading: false });
+
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" currentUserId="user-1" />);
+
+    fireEvent(getByTestId('photo-tile-photo-1'), 'longPress');
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(getByTestId('mock-report-sheet')).toBeTruthy();
   });
 });

@@ -15,6 +15,7 @@ jest.mock('../api', () => ({
     photos: {
       list: jest.fn(),
       get: jest.fn(),
+      delete: jest.fn(),
     },
   },
 }));
@@ -22,14 +23,15 @@ jest.mock('../api', () => ({
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 import React from 'react';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { renderHook, waitFor, act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { apiClient } from '../api';
-import { usePhotos, usePhoto, photoKeys } from '../photos';
+import { usePhotos, usePhoto, useDeletePhoto, photoKeys } from '../photos';
 import type { PhotoDetailDto, PhotoListResponseDto } from '@sher/shared-types';
 
 const mockList = apiClient.photos.list as jest.Mock;
 const mockGet = apiClient.photos.get as jest.Mock;
+const mockDelete = apiClient.photos.delete as jest.Mock;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -175,5 +177,39 @@ describe('usePhoto', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data).toBeUndefined();
     expect(mockGet).not.toHaveBeenCalled();
+  });
+});
+
+// ── useDeletePhoto ─────────────────────────────────────────────────────────────
+
+describe('useDeletePhoto', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('calls apiClient.photos.delete with the correct roomId and photoId', async () => {
+    mockDelete.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useDeletePhoto('room-1'), { wrapper });
+
+    act(() => {
+      result.current.mutate('photo-1');
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockDelete).toHaveBeenCalledWith('room-1', 'photo-1');
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the error and is not successful when the API call fails', async () => {
+    const err = new Error('PHOTO_NOT_YOURS');
+    mockDelete.mockRejectedValue(err);
+    const { result } = renderHook(() => useDeletePhoto('room-1'), { wrapper });
+
+    act(() => {
+      result.current.mutate('photo-1');
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBe(err);
   });
 });

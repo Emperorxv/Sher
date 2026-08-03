@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Membership, Room, RoomStatus } from '@prisma/client';
+import { Membership, PhotoStatus, Room, RoomStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { randomBytes } from 'crypto';
 import {
@@ -272,14 +272,24 @@ export class RoomsService {
     // Only block HOST removal when it's a host-remove action, not self-leave.
     if (!isSelfLeave && target.role === 'HOST') throw new ForbiddenException('CANNOT_REMOVE_HOST');
 
-    const photoCount = await this.prisma.photo.count({
-      where: { roomId, uploaderId: targetUserId },
-    });
-    if (photoCount > 0) throw new ForbiddenException('MEMBER_HAS_PHOTOS');
+    if (isSelfLeave) {
+      // Guest self-leave: photos stay in the room; member must delete own photos first.
+      const photoCount = await this.prisma.photo.count({
+        where: { roomId, uploaderId: targetUserId },
+      });
+      if (photoCount > 0) throw new ForbiddenException('MEMBER_HAS_PHOTOS');
 
-    await this.prisma.membership.delete({
-      where: { id: target.id },
-    });
+      await this.prisma.membership.delete({ where: { id: target.id } });
+    } else {
+      // Host-kick: atomically soft-delete all the member's photos and remove membership.
+      await this.prisma.$transaction([
+        this.prisma.photo.updateMany({
+          where: { roomId, uploaderId: targetUserId, deletedAt: null },
+          data: { deletedAt: new Date(), status: PhotoStatus.DELETED },
+        }),
+        this.prisma.membership.delete({ where: { id: target.id } }),
+      ]);
+    }
 
     this.gateway.emitMemberLeft(roomId, { userId: targetUserId });
   }

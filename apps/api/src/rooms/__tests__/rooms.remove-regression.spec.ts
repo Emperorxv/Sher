@@ -254,9 +254,16 @@ function makePrismaStub() {
 
     photo: {
       count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
 
-    $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    $transaction: jest.fn().mockImplementation(async (arg: unknown) => {
+      // Array form: $transaction([op1, op2, ...]) — each op is already a promise from the mock.
+      if (Array.isArray(arg)) {
+        return Promise.all(arg as Promise<unknown>[]);
+      }
+      // Function form: $transaction(async (tx) => { ... })
+      const fn = arg as (tx: unknown) => Promise<unknown>;
       const tx = {
         membership: {
           /** Purge soft-deleted (zombie) rows — mirrors the real deleteMany fix. */
@@ -436,6 +443,50 @@ describe('RoomsService — remove-member regressions', () => {
         (m) => m.userId === GUEST.id && m.leftAt === null,
       ).length;
       expect(activeCount).toBe(1);
+    });
+  });
+
+  // ── Kick cascade ───────────────────────────────────────────────────────────
+
+  describe('host-kick photo cascade', () => {
+    it('host kick atomically soft-deletes photos and removes membership', async () => {
+      await service.removeMember(ROOM.id, HOST.id, GUEST.id);
+
+      // photo.updateMany must have been called to soft-delete the kicked member's photos.
+      expect(prismaStub.photo.updateMany).toHaveBeenCalledWith({
+        where: { roomId: ROOM.id, uploaderId: GUEST.id, deletedAt: null },
+        data: { deletedAt: expect.any(Date), status: 'DELETED' },
+      });
+
+      // membership was deleted from the in-memory array by the $transaction mock.
+      const remaining = prismaStub._mems.find((m) => m.userId === GUEST.id);
+      expect(remaining).toBeUndefined();
+
+      expect(mockGateway.emitMemberLeft).toHaveBeenCalledWith(ROOM.id, { userId: GUEST.id });
+    });
+
+    it('host kick succeeds even when the member has zero photos (updateMany is a noop)', async () => {
+      prismaStub.photo.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(service.removeMember(ROOM.id, HOST.id, GUEST.id)).resolves.toBeUndefined();
+      expect(prismaStub.photo.updateMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── Self-leave photo guard (unchanged) ────────────────────────────────────
+
+  describe('self-leave MEMBER_HAS_PHOTOS guard unchanged', () => {
+    it('guest with photos cannot self-leave — MEMBER_HAS_PHOTOS still thrown', async () => {
+      // Make photo.count return a non-zero value for the self-leave branch.
+      prismaStub.photo.count.mockResolvedValueOnce(3);
+
+      await expect(service.removeMember(ROOM.id, GUEST.id, GUEST.id)).rejects.toMatchObject({
+        response: expect.objectContaining({ message: 'MEMBER_HAS_PHOTOS' }),
+      });
+
+      // Membership must still be present — the leave was blocked.
+      const guestMem = prismaStub._mems.find((m) => m.userId === GUEST.id);
+      expect(guestMem).toBeDefined();
     });
   });
 });

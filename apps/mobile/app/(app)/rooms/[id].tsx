@@ -30,7 +30,7 @@ import {
 } from '../../../components';
 import { useRoom, useRoomMembers, useEndRoom, useRemoveMember, roomKeys } from '../../../lib/rooms';
 import { useUnlockStatus, useInitiateRoomUnlock } from '../../../lib/payments';
-import { photoKeys } from '../../../lib/photos';
+import { photoKeys, useDeletePhoto } from '../../../lib/photos';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
 import { useAuthStore } from '../../../stores/auth';
@@ -106,6 +106,7 @@ export default function RoomDashboard() {
   const endRoom = useEndRoom();
   const removeMember = useRemoveMember();
   const initiateRoomUnlock = useInitiateRoomUnlock(id ?? '');
+  const deletePhoto = useDeletePhoto(id ?? '');
 
   // ── Paywall state ──────────────────────────────────────────────────────────
 
@@ -186,6 +187,9 @@ export default function RoomDashboard() {
           setPaymentFailedMsg('Payment failed. Please try again.');
         },
         'photo:new': () => {
+          void qc.invalidateQueries({ queryKey: photoKeys.list(id) });
+        },
+        'photo:deleted': () => {
           void qc.invalidateQueries({ queryKey: photoKeys.list(id) });
         },
       });
@@ -372,6 +376,8 @@ export default function RoomDashboard() {
           roomId={id ?? ''}
           photoCount={room.photoCount ?? 0}
           onUnlockPress={() => setPaywallOpen(true)}
+          currentUserId={userId}
+          onDeletePhoto={(photoId) => deletePhoto.mutate(photoId)}
         />
 
         {/* Payment failed non-blocking toast */}

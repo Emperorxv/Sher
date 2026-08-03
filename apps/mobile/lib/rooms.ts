@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateRoomDto, JoinRoomDto } from '@sher/shared-types';
 import { apiClient } from './api';
+import { photoKeys } from './photos';
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,7 @@ export function useRemoveMember() {
       void qc.invalidateQueries({ queryKey: roomKeys.members(roomId) });
       void qc.invalidateQueries({ queryKey: roomKeys.detail(roomId) });
       void qc.invalidateQueries({ queryKey: roomKeys.list() });
+      void qc.invalidateQueries({ queryKey: photoKeys.list(roomId) });
     },
   });
 }

@@ -13,6 +13,7 @@ import {
 } from '@sher/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { RoomsGateway } from '../rooms/rooms.gateway';
 import { PhotoQueueService } from './photos-queue.service';
 import { UploadUrlInput } from './schemas/upload-url.schema';
 import {
@@ -30,6 +31,7 @@ export class PhotosService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly queue: PhotoQueueService,
+    private readonly gateway: RoomsGateway,
   ) {}
 
   // ── Upload URL ──────────────────────────────────────────────────────────────
@@ -195,6 +197,28 @@ export class PhotosService {
       thumbUrl,
       mediumUrl,
     };
+  }
+
+  // ── Delete photo ─────────────────────────────────────────────────────────────
+
+  async deletePhoto(roomId: string, callerId: string, photoId: string): Promise<void> {
+    const photo = await this.prisma.photo.findFirst({
+      where: { id: photoId, roomId, deletedAt: null },
+    });
+    if (!photo) {
+      throw new NotFoundException({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found.' });
+    }
+    if (photo.uploaderId !== callerId) {
+      throw new ForbiddenException({
+        code: 'PHOTO_NOT_YOURS',
+        message: 'You can only delete your own photos.',
+      });
+    }
+    await this.prisma.photo.update({
+      where: { id: photoId },
+      data: { deletedAt: new Date(), status: PhotoStatus.DELETED },
+    });
+    this.gateway.emitPhotoDeleted(roomId, photoId);
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────

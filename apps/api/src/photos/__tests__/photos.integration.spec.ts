@@ -101,6 +101,7 @@ describeIfDb('PhotosService — real-DB integration', () => {
       prisma as unknown as PrismaService,
       storageMock as unknown as StorageService,
       queueMock as unknown as PhotoQueueService,
+      { emitPhotoDeleted: jest.fn() } as never,
     );
 
     // ── Create users ────────────────────────────────────────────────────────

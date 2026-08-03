@@ -254,6 +254,10 @@ export function createApiClient(opts: ApiClientOptions) {
     /** GET /v1/rooms/:id/photos/:photoId — single photo with original URL */
     get: (roomId: string, photoId: string) =>
       rawFetch<PhotoDetailDto>(`/v1/rooms/${roomId}/photos/${photoId}`),
+
+    /** DELETE /v1/rooms/:id/photos/:photoId — soft-delete own photo (204 No Content) */
+    delete: (roomId: string, photoId: string) =>
+      rawFetch<void>(`/v1/rooms/${roomId}/photos/${photoId}`, { method: 'DELETE' }),
   };
 
   // ─── Reports endpoints ───────────────────────────────────────────────────────

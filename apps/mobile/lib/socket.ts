@@ -16,6 +16,7 @@ export type RoomSocketEvents = {
   'room:retention_extended': (data: { roomId: string; retentionUntil: string }) => void;
   'payment:failed': (data: { roomId: string; purpose: string }) => void;
   'photo:new': (data: { photoId: string; thumbUrl: string; uploaderId: string }) => void;
+  'photo:deleted': (data: { photoId: string }) => void;
 };
 
 let socket: Socket | null = null;
@@ -77,6 +78,7 @@ export function subscribeToRoom(roomId: string, handlers: Partial<RoomSocketEven
     'room:retention_extended': onRetentionExtended,
     'payment:failed': onPaymentFailed,
     'photo:new': onPhotoNew,
+    'photo:deleted': onPhotoDeleted,
   } = handlers;
 
   if (onJoined) socket.on('member:joined', onJoined);
@@ -87,6 +89,7 @@ export function subscribeToRoom(roomId: string, handlers: Partial<RoomSocketEven
   if (onRetentionExtended) socket.on('room:retention_extended', onRetentionExtended);
   if (onPaymentFailed) socket.on('payment:failed', onPaymentFailed);
   if (onPhotoNew) socket.on('photo:new', onPhotoNew);
+  if (onPhotoDeleted) socket.on('photo:deleted', onPhotoDeleted);
 
   return () => {
     socket?.emit('room:leave', { roomId });
@@ -98,5 +101,6 @@ export function subscribeToRoom(roomId: string, handlers: Partial<RoomSocketEven
     if (onRetentionExtended) socket?.off('room:retention_extended', onRetentionExtended);
     if (onPaymentFailed) socket?.off('payment:failed', onPaymentFailed);
     if (onPhotoNew) socket?.off('photo:new', onPhotoNew);
+    if (onPhotoDeleted) socket?.off('photo:deleted', onPhotoDeleted);
   };
 }

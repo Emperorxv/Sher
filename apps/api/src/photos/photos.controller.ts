@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -65,5 +66,17 @@ export class PhotosController {
     @Param('photoId') photoId: string,
   ) {
     return this.photos.getPhoto(roomId, photoId, user.id);
+  }
+
+  // ── DELETE /v1/rooms/:id/photos/:photoId ───────────────────────────────────
+
+  @Delete(':photoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePhoto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') roomId: string,
+    @Param('photoId') photoId: string,
+  ) {
+    await this.photos.deletePhoto(roomId, user.id, photoId);
   }
 }

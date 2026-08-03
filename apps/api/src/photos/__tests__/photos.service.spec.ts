@@ -108,12 +108,28 @@ function makeQueue() {
   return { addJob: jest.fn().mockResolvedValue(undefined) };
 }
 
+function makeGateway() {
+  return { emitPhotoDeleted: jest.fn() };
+}
+
 function makeService(prismaOverrides: Record<string, unknown> = {}) {
   return new PhotosService(
     makePrisma(prismaOverrides) as never,
     makeStorage() as never,
     makeQueue() as never,
+    makeGateway() as never,
   );
+}
+
+function makeServiceWithGateway(prismaOverrides: Record<string, unknown> = {}) {
+  const gateway = makeGateway();
+  const svc = new PhotosService(
+    makePrisma(prismaOverrides) as never,
+    makeStorage() as never,
+    makeQueue() as never,
+    gateway as never,
+  );
+  return { svc, gateway };
 }
 
 // ── getUploadUrl ──────────────────────────────────────────────────────────────
@@ -180,8 +196,12 @@ describe('PhotosService.commit', () => {
     const prisma = makePrisma({
       photo: { findFirst: jest.fn().mockResolvedValue(UPLOADING_PHOTO) },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock
-    const svc = new PhotosService(prisma as any, storage as any, queue as any);
+    const svc = new PhotosService(
+      prisma as never,
+      storage as never,
+      queue as never,
+      makeGateway() as never,
+    );
 
     const result = await svc.commit(ROOM_ID, PHOTO_ID, USER_ID);
 
@@ -203,8 +223,12 @@ describe('PhotosService.commit', () => {
   it('is idempotent when photo is already in READY state', async () => {
     const queue = makeQueue();
     const prisma = makePrisma({ photo: { findFirst: jest.fn().mockResolvedValue(READY_PHOTO) } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock
-    const svc = new PhotosService(prisma as any, makeStorage() as any, queue as any);
+    const svc = new PhotosService(
+      prisma as never,
+      makeStorage() as never,
+      queue as never,
+      makeGateway() as never,
+    );
 
     const result = await svc.commit(ROOM_ID, PHOTO_ID, USER_ID);
 
@@ -333,5 +357,51 @@ describe('PhotosService.getPhoto', () => {
       membership: { findFirst: jest.fn().mockResolvedValue(null) },
     });
     await expect(svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID)).rejects.toThrow(ForbiddenException);
+  });
+});
+
+// ── deletePhoto ───────────────────────────────────────────────────────────────
+
+describe('PhotosService.deletePhoto', () => {
+  it('resolves without throwing on happy path', async () => {
+    const { svc, gateway } = makeServiceWithGateway();
+
+    await expect(svc.deletePhoto(ROOM_ID, USER_ID, PHOTO_ID)).resolves.toBeUndefined();
+    expect(gateway.emitPhotoDeleted).toHaveBeenCalledWith(ROOM_ID, PHOTO_ID);
+  });
+
+  it('soft-deletes: prisma.photo.update called with deletedAt and DELETED status', async () => {
+    const photoUpdate = jest.fn().mockResolvedValue({});
+    const { svc, gateway } = makeServiceWithGateway({
+      photo: {
+        ...makePrisma().photo,
+        update: photoUpdate,
+      },
+    });
+
+    await svc.deletePhoto(ROOM_ID, USER_ID, PHOTO_ID);
+
+    expect(photoUpdate).toHaveBeenCalledWith({
+      where: { id: PHOTO_ID },
+      data: { deletedAt: expect.any(Date), status: 'DELETED' },
+    });
+    expect(gateway.emitPhotoDeleted).toHaveBeenCalledWith(ROOM_ID, PHOTO_ID);
+  });
+
+  it('throws 404 when photo is not found or already deleted', async () => {
+    const { svc } = makeServiceWithGateway({
+      photo: { ...makePrisma().photo, findFirst: jest.fn().mockResolvedValue(null) },
+    });
+    await expect(svc.deletePhoto(ROOM_ID, USER_ID, PHOTO_ID)).rejects.toThrow(NotFoundException);
+  });
+
+  it('throws 403 PHOTO_NOT_YOURS when caller is not the uploader', async () => {
+    const { svc } = makeServiceWithGateway({
+      photo: {
+        ...makePrisma().photo,
+        findFirst: jest.fn().mockResolvedValue({ ...READY_PHOTO, uploaderId: 'other-user' }),
+      },
+    });
+    await expect(svc.deletePhoto(ROOM_ID, USER_ID, PHOTO_ID)).rejects.toThrow(ForbiddenException);
   });
 });

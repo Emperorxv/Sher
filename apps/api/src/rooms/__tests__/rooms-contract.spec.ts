@@ -254,9 +254,15 @@ function makeMockPrisma() {
     },
     photo: {
       count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-      // Use the same mocks for the transaction
+    $transaction: jest.fn().mockImplementation(async (arg: unknown) => {
+      // Array form: $transaction([op1, op2]) — each op is already a promise from the mock.
+      if (Array.isArray(arg)) {
+        return Promise.all(arg as Promise<unknown>[]);
+      }
+      // Function form: $transaction(async (tx) => { ... })
+      const fn = arg as (tx: unknown) => Promise<unknown>;
       return fn({
         membership: {
           /** Purge soft-deleted zombie rows — no-op in this suite (no legacy data). */
@@ -780,15 +786,16 @@ describe('RoomsController (contract)', () => {
       expect(res.status).toBe(HttpStatus.NOT_FOUND);
     });
 
-    it('403 — member has photos; cannot be removed', async () => {
+    it('403 — guest self-leave blocked when they have photos (MEMBER_HAS_PHOTOS)', async () => {
+      // Self-leave: callerId === targetUserId. Guard does one lookup, service does a second.
       mockPrisma.membership.findUnique
-        .mockResolvedValueOnce(HOST_MEMBERSHIP)
-        .mockResolvedValueOnce(GUEST_MEMBERSHIP);
-      mockPrisma.photo.count.mockResolvedValueOnce(2); // has photos
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP) // RoomRoleGuard / requireMembership
+        .mockResolvedValueOnce(GUEST_MEMBERSHIP); // target lookup in removeMember
+      mockPrisma.photo.count.mockResolvedValueOnce(2); // guest has 2 photos → blocked
 
       const res = await request(app.getHttpServer())
         .delete(`/v1/rooms/${TEST_ROOM.id}/members/${GUEST_USER.id}`)
-        .set('Authorization', `Bearer ${hostToken}`);
+        .set('Authorization', `Bearer ${guestToken}`);
 
       expect(res.status).toBe(HttpStatus.FORBIDDEN);
       const { error } = res.body as { error: { code: string; message: string } };
