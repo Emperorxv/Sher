@@ -132,6 +132,14 @@ jest.mock('../../lib/rooms', () => ({
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useUnlockStatus } from '../../lib/payments';
+import { useAuthStore } from '../../stores/auth';
+
+// Top-level mock references — consistent with project pattern in other dashboard tests.
+// useAuthStore's Zustand type (UseBoundStore<StoreApi<...>>) does not structurally
+// overlap with jest.Mock, so the double cast through unknown is required.
+const mockUseUnlockStatus = useUnlockStatus as jest.Mock;
+const mockUseAuthStore = useAuthStore as unknown as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -179,9 +187,31 @@ describe('RoomDashboard layout — post-member-list elements reachable', () => {
     expect(galleryEmpty ?? galleryLoading).not.toBeNull();
   });
 
-  it('renders "Take photo" button after the member list (host + ACTIVE + EXEMPT)', () => {
+  it('renders "Take photo" button for any active member (host, ACTIVE room)', () => {
     const { getByLabelText } = renderDashboard();
     // accessibilityLabel="Open camera to take a photo" — set on the Button
+    expect(getByLabelText('Open camera to take a photo')).toBeTruthy();
+  });
+
+  /**
+   * Regression test for the canTakePhoto bug.
+   *
+   * Bug: canTakePhoto was gated on callerUnlockState === 'UNLOCKED' | 'EXEMPT',
+   * making "Take photo" permanently invisible for LOCKED members (every non-host
+   * during an ACTIVE room). The spec is clear: unlockState gates gallery access
+   * in ENDED rooms only — any active member can capture, full stop.
+   *
+   * Fix: canTakePhoto = isActive (unlockState check removed entirely).
+   */
+  it('renders "Take photo" button for a LOCKED guest in an ACTIVE room (regression)', () => {
+    // Override defaults: current user is a guest (not host) with LOCKED unlock state.
+    // Before the fix, canTakePhoto was false here and the button did not render.
+    mockUseUnlockStatus.mockReturnValueOnce({
+      data: { callerUnlockState: 'LOCKED' },
+    });
+    mockUseAuthStore.mockReturnValueOnce({ user: { id: 'user-guest-2' } });
+
+    const { getByLabelText } = renderDashboard();
     expect(getByLabelText('Open camera to take a photo')).toBeTruthy();
   });
 
