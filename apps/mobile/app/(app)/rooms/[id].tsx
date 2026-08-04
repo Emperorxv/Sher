@@ -122,9 +122,9 @@ export default function RoomDashboard() {
 
   const isHost = room?.hostId === userId;
   const isActive = room?.status === 'ACTIVE';
-  const callerUnlockState = unlockStatus?.callerUnlockState;
-  const canTakePhoto =
-    isActive && (callerUnlockState === 'UNLOCKED' || callerUnlockState === 'EXEMPT');
+  // Any active member may capture photos — the paywall only engages after the room ends.
+  // unlockState is irrelevant to capture; it gates gallery access in ENDED rooms only.
+  const canTakePhoto = isActive;
 
   // isLocked is false until unlockStatus loads; avoids flash for unlocked users
   const isLocked = unlockStatus?.callerUnlockState === 'LOCKED';

@@ -132,6 +132,8 @@ jest.mock('../../lib/rooms', () => ({
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useUnlockStatus } from '../../lib/payments';
+import { useAuthStore } from '../../stores/auth';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -179,9 +181,31 @@ describe('RoomDashboard layout — post-member-list elements reachable', () => {
     expect(galleryEmpty ?? galleryLoading).not.toBeNull();
   });
 
-  it('renders "Take photo" button after the member list (host + ACTIVE + EXEMPT)', () => {
+  it('renders "Take photo" button for any active member (host, ACTIVE room)', () => {
     const { getByLabelText } = renderDashboard();
     // accessibilityLabel="Open camera to take a photo" — set on the Button
+    expect(getByLabelText('Open camera to take a photo')).toBeTruthy();
+  });
+
+  /**
+   * Regression test for the canTakePhoto bug.
+   *
+   * Bug: canTakePhoto was gated on callerUnlockState === 'UNLOCKED' | 'EXEMPT',
+   * making "Take photo" permanently invisible for LOCKED members (every non-host
+   * during an ACTIVE room). The spec is clear: unlockState gates gallery access
+   * in ENDED rooms only — any active member can capture, full stop.
+   *
+   * Fix: canTakePhoto = isActive (unlockState check removed entirely).
+   */
+  it('renders "Take photo" button for a LOCKED guest in an ACTIVE room (regression)', () => {
+    // Override defaults: current user is a guest (not host) with LOCKED unlock state.
+    // Before the fix, canTakePhoto was false here and the button did not render.
+    (useUnlockStatus as jest.Mock).mockReturnValueOnce({
+      data: { callerUnlockState: 'LOCKED' },
+    });
+    (useAuthStore as jest.Mock).mockReturnValueOnce({ user: { id: 'user-guest-2' } });
+
+    const { getByLabelText } = renderDashboard();
     expect(getByLabelText('Open camera to take a photo')).toBeTruthy();
   });
 
