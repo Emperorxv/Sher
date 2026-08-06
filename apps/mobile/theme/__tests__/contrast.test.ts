@@ -110,6 +110,11 @@ describe('WCAG AA contrast — §7.5 token pairs', () => {
   // Fog border / disabled state: not checked for text contrast (it's decorative / icon-paired).
   // Verified: disabled button uses fog bg + no text (icon-only) OR pairs with coal text below.
 
+  // Dark ("Take photo") button: white label on navy bg (~19.5:1).
+  it('white (button label) on navy (dark button) ≥ 4.5:1', () => {
+    assertAA('#FFFFFF', colors.navy, 'white', 'navy');
+  });
+
   // Smoke test: the ratio function itself is correct for known values
   it('white on black = 21:1 (reference)', () => {
     const ratio = contrastRatio('#FFFFFF', '#000000');

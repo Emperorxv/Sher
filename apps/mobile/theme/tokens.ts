@@ -12,6 +12,7 @@ export const colors = {
   ink: '#1A1A1A', // cards on cream, alt surfaces
   fog: '#E8E4DE', // borders, dividers, disabled
   danger: '#E53935', // destructive actions, errors
+  navy: '#000a22', // dark navy — "Take photo" capture button
 } as const;
 
 export type ColorToken = keyof typeof colors;

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, fonts, fontSizes, radii, minTapTarget } from '../theme';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'dark';
 
 interface ButtonProps extends Omit<PressableProps, 'style'> {
   label: string;
@@ -21,11 +21,13 @@ interface ButtonProps extends Omit<PressableProps, 'style'> {
 //   secondary (#7B2CBF) → cream 7.06:1 ✓
 //   danger   (#E53935) → coal  4.68:1 ✓   (cream would only be 4.01:1 — fails)
 //   ghost    (transparent/cream) → coal 18:1 ✓  border is primary for brand signal
+//   dark     (#000a22 navy) → white 19.5:1 ✓   capture / action button
 const variantStyles: Record<Variant, { bg: string; fg: string; border?: string }> = {
   primary: { bg: colors.primary, fg: colors.coal },
   secondary: { bg: colors.violet, fg: colors.cream },
   danger: { bg: colors.danger, fg: colors.coal },
   ghost: { bg: 'transparent', fg: colors.coal, border: colors.primary },
+  dark: { bg: colors.navy, fg: '#FFFFFF' },
 };
 
 export function Button({ label, variant = 'primary', disabled, style, ...rest }: ButtonProps) {

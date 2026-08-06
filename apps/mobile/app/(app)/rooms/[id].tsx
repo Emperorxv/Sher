@@ -391,7 +391,7 @@ export default function RoomDashboard() {
         {canTakePhoto && (
           <Button
             label="Take photo"
-            variant="primary"
+            variant="dark"
             onPress={() => router.push(`/rooms/${id}/camera`)}
             style={styles.takePhotoBtn}
             accessibilityLabel="Open camera to take a photo"
