@@ -304,6 +304,41 @@ describe('PhotosService.listPhotos', () => {
     await expect(svc.listPhotos(ROOM_ID, USER_ID)).rejects.toThrow(ForbiddenException);
   });
 
+  it('scope=mine passes uploaderId filter to findMany', async () => {
+    const findMany = jest.fn().mockResolvedValue([READY_PHOTO]);
+    const svc = makeService({ photo: { ...makePrisma().photo, findMany } });
+
+    await svc.listPhotos(ROOM_ID, USER_ID, undefined, 30, 'mine');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ uploaderId: USER_ID }),
+      }),
+    );
+  });
+
+  it('scope=all does not add uploaderId filter to findMany', async () => {
+    const findMany = jest.fn().mockResolvedValue([READY_PHOTO]);
+    const svc = makeService({ photo: { ...makePrisma().photo, findMany } });
+
+    await svc.listPhotos(ROOM_ID, USER_ID, undefined, 30, 'all');
+
+    const where = (findMany.mock.calls[0] as [{ where: Record<string, unknown> }])[0].where;
+    expect(where).not.toHaveProperty('uploaderId');
+  });
+
+  it('locked gallery returns empty regardless of scope=mine', async () => {
+    const svc = makeService({
+      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_LOCKED) },
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM) },
+    });
+
+    const result = await svc.listPhotos(ROOM_ID, USER_ID, undefined, 30, 'mine');
+
+    expect(result.data).toEqual([]);
+    expect(result.meta.locked).toBe(true);
+  });
+
   it('includes nextCursor when there are more pages', async () => {
     // Return limit+1 items to signal hasMore
     const photos = Array.from({ length: 31 }, (_, i) => ({ ...READY_PHOTO, id: `photo-${i}` }));

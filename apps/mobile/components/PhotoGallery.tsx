@@ -4,8 +4,12 @@
  * States:
  *   loading   — ActivityIndicator while usePhotos fetches.
  *   locked    — LockedGalleryPlaceholder when meta.locked is true.
- *   empty     — "No photos yet." when unlocked but gallery is empty.
+ *   empty     — "No photos yet." / "You haven't taken any photos yet."
  *   populated — 3-column thumbnail FlatList.
+ *
+ * The scope toggle (All | Mine) is always rendered above the content area
+ * and is disabled (dimmed, taps ignored) while a fetch is in-flight.
+ * It is hidden only when the gallery is confirmed locked (paywall state).
  *
  * No gradients; solid colors only.
  */
@@ -48,74 +52,103 @@ export function PhotoGallery({
   onDeletePhoto,
 }: PhotoGalleryProps) {
   const router = useRouter();
-  const { data, isLoading } = usePhotos(roomId);
+  const [scope, setScope] = useState<'all' | 'mine'>('all');
+  const { data, isLoading } = usePhotos(roomId, scope);
   const [reportPhotoId, setReportPhotoId] = useState<string | null>(null);
-  if (isLoading) {
-    return (
-      <View style={styles.loading} testID="gallery-loading">
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
-  }
 
+  // Paywall locked: hide toggle, return placeholder immediately.
   if (data?.meta.locked) {
     return <LockedGalleryPlaceholder photoCount={photoCount ?? 0} onUnlockPress={onUnlockPress} />;
   }
 
-  if (!data?.data.length) {
-    return (
-      <View style={styles.empty} testID="gallery-empty">
-        <Text style={styles.emptyText}>No photos yet.</Text>
-      </View>
-    );
-  }
-
   return (
     <>
-      <FlatList
-        data={data.data}
-        keyExtractor={(p) => p.id}
-        numColumns={COLUMNS}
-        scrollEnabled={false}
-        testID="gallery-grid"
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
-            onLongPress={() => {
-              const isOwn = currentUserId && item.uploaderId === currentUserId && onDeletePhoto;
-              if (isOwn) {
-                Alert.alert('Photo options', '', [
-                  {
-                    text: 'Delete photo',
-                    style: 'destructive',
-                    onPress: () => onDeletePhoto(item.id),
-                  },
-                  { text: 'Report photo', onPress: () => setReportPhotoId(item.id) },
-                  { text: 'Cancel', style: 'cancel' },
-                ]);
-              } else {
-                setReportPhotoId(item.id);
-              }
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="View photo"
-            testID={`photo-tile-${item.id}`}
-          >
-            {item.thumbUrl ? (
-              <Image
-                source={{ uri: item.thumbUrl }}
-                style={styles.thumb}
-                testID={`photo-thumb-${item.id}`}
-              />
-            ) : (
-              <View
-                style={[styles.thumb, styles.thumbPending]}
-                testID={`photo-pending-${item.id}`}
-              />
-            )}
-          </Pressable>
-        )}
-      />
+      {/* Scope toggle — always visible; disabled while fetch is in-flight. */}
+      <View style={[styles.toggleRow, isLoading && styles.toggleDimmed]}>
+        <Pressable
+          style={[styles.toggleSegment, scope === 'all' && styles.segmentActive]}
+          onPress={() => setScope('all')}
+          disabled={isLoading}
+          testID="scope-toggle-all"
+          accessibilityRole="button"
+          accessibilityLabel="Show all photos"
+          accessibilityState={{ selected: scope === 'all', disabled: isLoading }}
+        >
+          <Text style={[styles.segmentLabel, scope === 'all' && styles.segmentLabelActive]}>
+            All
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.toggleSegment, scope === 'mine' && styles.segmentActive]}
+          onPress={() => setScope('mine')}
+          disabled={isLoading}
+          testID="scope-toggle-mine"
+          accessibilityRole="button"
+          accessibilityLabel="Show my photos"
+          accessibilityState={{ selected: scope === 'mine', disabled: isLoading }}
+        >
+          <Text style={[styles.segmentLabel, scope === 'mine' && styles.segmentLabelActive]}>
+            Mine
+          </Text>
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.loading} testID="gallery-loading">
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : !data?.data.length ? (
+        <View style={styles.empty} testID="gallery-empty">
+          <Text style={styles.emptyText}>
+            {scope === 'mine' ? "You haven't taken any photos yet." : 'No photos yet.'}
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={data.data}
+          keyExtractor={(p) => p.id}
+          numColumns={COLUMNS}
+          scrollEnabled={false}
+          testID="gallery-grid"
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
+              onLongPress={() => {
+                const isOwn = currentUserId && item.uploaderId === currentUserId && onDeletePhoto;
+                if (isOwn) {
+                  Alert.alert('Photo options', '', [
+                    {
+                      text: 'Delete photo',
+                      style: 'destructive',
+                      onPress: () => onDeletePhoto(item.id),
+                    },
+                    { text: 'Report photo', onPress: () => setReportPhotoId(item.id) },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                } else {
+                  setReportPhotoId(item.id);
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="View photo"
+              testID={`photo-tile-${item.id}`}
+            >
+              {item.thumbUrl ? (
+                <Image
+                  source={{ uri: item.thumbUrl }}
+                  style={styles.thumb}
+                  testID={`photo-thumb-${item.id}`}
+                />
+              ) : (
+                <View
+                  style={[styles.thumb, styles.thumbPending]}
+                  testID={`photo-pending-${item.id}`}
+                />
+              )}
+            </Pressable>
+          )}
+        />
+      )}
 
       {reportPhotoId && (
         <ReportSheet
@@ -131,6 +164,35 @@ export function PhotoGallery({
 }
 
 const styles = StyleSheet.create({
+  toggleRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.fog,
+    borderRadius: radii.button,
+    marginBottom: spacing.md,
+    padding: 4,
+  },
+  toggleDimmed: {
+    opacity: 0.4,
+  },
+  toggleSegment: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: radii.button - 2,
+  },
+  segmentActive: {
+    backgroundColor: colors.coal,
+  },
+  segmentLabel: {
+    fontFamily: fonts.label,
+    fontSize: fontSizes.body2,
+    color: colors.coal,
+    opacity: 0.5,
+  },
+  segmentLabelActive: {
+    color: colors.cream,
+    opacity: 1,
+  },
   loading: {
     paddingVertical: spacing.lg,
     alignItems: 'center',

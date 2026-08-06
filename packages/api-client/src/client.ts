@@ -243,10 +243,12 @@ export function createApiClient(opts: ApiClientOptions) {
       }),
 
     /** GET /v1/rooms/:id/photos — cursor-paginated photo list */
-    list: (roomId: string, cursor?: string, limit?: number) => {
+    list: (roomId: string, cursor?: string, limit?: number, scope?: 'all' | 'mine') => {
       const parts: string[] = [];
       if (cursor !== undefined) parts.push(`cursor=${encodeURIComponent(cursor)}`);
       if (limit !== undefined) parts.push(`limit=${encodeURIComponent(String(limit))}`);
+      // Omit scope=all — server defaults to all, keeps URLs clean.
+      if (scope === 'mine') parts.push(`scope=mine`);
       const qs = parts.join('&');
       return rawFetch<PhotoListResponseDto>(`/v1/rooms/${roomId}/photos${qs ? `?${qs}` : ''}`);
     },

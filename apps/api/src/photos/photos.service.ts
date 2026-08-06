@@ -133,11 +133,13 @@ export class PhotosService {
     userId: string,
     cursor?: string,
     limit = 30,
+    scope: 'all' | 'mine' = 'all',
   ): Promise<PhotoListResponseDto> {
     const { room } = await this.getMembershipAndRoom(roomId, userId);
 
     // Paywall: gallery is locked until a ROOM_UNLOCK or BASE_UNLOCK payment succeeds.
     // Check room-level unlock fact only; individual membership.unlockState is not the gate.
+    // Lock check fires BEFORE scope filter — a locked gallery is always empty regardless of scope.
     const isUnlocked = room.unlockedAt !== null || room.baseUnlockedAt !== null;
     if (room.status === RoomStatus.ENDED && !isUnlocked) {
       return { data: [], meta: { locked: true, nextCursor: null } };
@@ -146,7 +148,12 @@ export class PhotosService {
     const safeLimit = Math.min(Math.max(1, limit), 100);
 
     const rows = await this.prisma.photo.findMany({
-      where: { roomId, status: PhotoStatus.READY, deletedAt: null },
+      where: {
+        roomId,
+        status: PhotoStatus.READY,
+        deletedAt: null,
+        ...(scope === 'mine' ? { uploaderId: userId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: safeLimit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

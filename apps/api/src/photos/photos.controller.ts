@@ -53,8 +53,16 @@ export class PhotosController {
     @Param('id') roomId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('scope') rawScope?: string,
   ) {
-    return this.photos.listPhotos(roomId, user.id, cursor, limit ? parseInt(limit, 10) : undefined);
+    const scope = rawScope === 'mine' ? 'mine' : 'all';
+    return this.photos.listPhotos(
+      roomId,
+      user.id,
+      cursor,
+      limit ? parseInt(limit, 10) : undefined,
+      scope,
+    );
   }
 
   // ── GET /v1/rooms/:id/photos/:photoId ─────────────────────────────────────

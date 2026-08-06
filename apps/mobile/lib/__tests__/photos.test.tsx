@@ -74,8 +74,17 @@ const DETAIL_RESPONSE: PhotoDetailDto = {
 // ── photoKeys ─────────────────────────────────────────────────────────────────
 
 describe('photoKeys', () => {
-  it('list returns the correct key tuple', () => {
-    expect(photoKeys.list('room-1')).toEqual(['rooms', 'room-1', 'photos']);
+  it('lists returns the broad prefix key tuple (no scope)', () => {
+    expect(photoKeys.lists('room-1')).toEqual(['rooms', 'room-1', 'photos']);
+  });
+
+  it('list defaults to scope=all', () => {
+    expect(photoKeys.list('room-1')).toEqual(['rooms', 'room-1', 'photos', 'all']);
+  });
+
+  it('list includes scope in the key', () => {
+    expect(photoKeys.list('room-1', 'mine')).toEqual(['rooms', 'room-1', 'photos', 'mine']);
+    expect(photoKeys.list('room-1', 'all')).toEqual(['rooms', 'room-1', 'photos', 'all']);
   });
 
   it('list is distinct for different room IDs', () => {
@@ -86,11 +95,13 @@ describe('photoKeys', () => {
     expect(photoKeys.detail('room-1', 'photo-1')).toEqual(['rooms', 'room-1', 'photos', 'photo-1']);
   });
 
-  it('detail key is a child of the list key (enables hierarchical invalidation)', () => {
+  it('list and detail share the broad lists prefix (enables hierarchical invalidation)', () => {
+    const prefix = photoKeys.lists('room-1');
     const list = photoKeys.list('room-1');
     const detail = photoKeys.detail('room-1', 'photo-1');
-    // detail starts with all segments of list
-    expect(detail.slice(0, list.length)).toEqual([...list]);
+    // Both list and detail start with the broad prefix.
+    expect(list.slice(0, prefix.length)).toEqual([...prefix]);
+    expect(detail.slice(0, prefix.length)).toEqual([...prefix]);
   });
 });
 
@@ -108,7 +119,8 @@ describe('usePhotos', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.data).toEqual(PHOTOS_RESPONSE);
-    expect(mockList).toHaveBeenCalledWith('room-1');
+    // scope='all' (default) → scope arg omitted (undefined) so the server uses its default.
+    expect(mockList).toHaveBeenCalledWith('room-1', undefined, undefined, undefined);
     expect(mockList).toHaveBeenCalledTimes(1);
   });
 

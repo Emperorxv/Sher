@@ -21,7 +21,8 @@ jest.mock('expo-router', () => ({
 jest.mock('../../lib/photos', () => ({
   usePhotos: jest.fn(),
   photoKeys: {
-    list: (roomId: string) => ['rooms', roomId, 'photos'],
+    lists: (roomId: string) => ['rooms', roomId, 'photos'],
+    list: (roomId: string, scope = 'all') => ['rooms', roomId, 'photos', scope],
     detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],
   },
 }));
@@ -225,5 +226,64 @@ describe('PhotoGallery — long-press behavior', () => {
 
     expect(alertSpy).not.toHaveBeenCalled();
     expect(getByTestId('mock-report-sheet')).toBeTruthy();
+  });
+});
+
+// ── Scope toggle ───────────────────────────────────────────────────────────────
+
+describe('PhotoGallery — scope toggle', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('toggle is visible during initial loading (not hidden)', () => {
+    mockUsePhotos.mockReturnValue({ data: undefined, isLoading: true });
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
+    expect(getByTestId('scope-toggle-all')).toBeTruthy();
+    expect(getByTestId('scope-toggle-mine')).toBeTruthy();
+  });
+
+  it('toggle segments are disabled while a fetch is in-flight', () => {
+    mockUsePhotos.mockReturnValue({ data: undefined, isLoading: true });
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
+    // accessibilityState.disabled is set — verifies both a11y correctness and
+    // the disabled intent (native tap blocking comes from the disabled prop).
+    expect(getByTestId('scope-toggle-all').props.accessibilityState.disabled).toBe(true);
+    expect(getByTestId('scope-toggle-mine').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('"All" tab is selected by default on mount', () => {
+    mockUsePhotos.mockReturnValue({ data: EMPTY, isLoading: false });
+    render(<PhotoGallery roomId="room-1" />);
+    // usePhotos must have been called with 'all' — confirms scope initial state.
+    expect(mockUsePhotos).toHaveBeenCalledWith('room-1', 'all');
+  });
+
+  it('pressing "Mine" triggers a new fetch with scope=mine', () => {
+    mockUsePhotos.mockReturnValue({ data: EMPTY, isLoading: false });
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
+
+    fireEvent.press(getByTestId('scope-toggle-mine'));
+
+    // After re-render, usePhotos should have been called with 'mine'.
+    expect(mockUsePhotos).toHaveBeenCalledWith('room-1', 'mine');
+  });
+
+  it('scope resets to "All" on fresh mount (simulates navigate-away-and-back)', () => {
+    mockUsePhotos.mockReturnValue({ data: EMPTY, isLoading: false });
+
+    // First mount — switch to 'Mine'.
+    const { unmount, getByTestId } = render(<PhotoGallery roomId="room-1" />);
+    fireEvent.press(getByTestId('scope-toggle-mine'));
+
+    // Unmount (navigate away).
+    unmount();
+    jest.clearAllMocks();
+    mockUsePhotos.mockReturnValue({ data: EMPTY, isLoading: false });
+
+    // Second mount (navigate back) — scope must default to 'all' again.
+    render(<PhotoGallery roomId="room-1" />);
+    expect(mockUsePhotos).toHaveBeenCalledWith('room-1', 'all');
+    expect(mockUsePhotos).not.toHaveBeenCalledWith('room-1', 'mine');
   });
 });
