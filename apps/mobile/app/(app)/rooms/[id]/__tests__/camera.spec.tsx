@@ -52,6 +52,10 @@ jest.mock('../../../../../lib/camera', () => ({
   mapUploadError: jest.fn(() => 'Upload failed. Tap retry.'),
 }));
 
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn(),
+}));
+
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import React from 'react';
@@ -59,6 +63,9 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 import * as VisionCamera from 'react-native-vision-camera';
 import * as CameraLib from '../../../../../lib/camera';
+import * as ImagePicker from 'expo-image-picker';
+
+const mockLaunchImageLibrary = ImagePicker.launchImageLibraryAsync as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -310,6 +317,55 @@ describe('upload error', () => {
 
     await waitFor(() => {
       expect(mockUpload).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+// ── Dev photo picker fallback ──────────────────────────────────────────────────
+
+describe('dev photo picker fallback', () => {
+  beforeEach(() => {
+    (CameraLib.useCameraDeviceWithFallback as jest.Mock).mockReturnValue(null);
+    mockLaunchImageLibrary.mockResolvedValue({ canceled: true, assets: null });
+  });
+
+  it('shows "Pick test photo (dev only)" button when __DEV__ is true and device is null', () => {
+    const { getByTestId } = renderScreen();
+    expect(getByTestId('dev-pick-photo')).toBeTruthy();
+  });
+
+  it('does not show picker button when __DEV__ is false', () => {
+    // @ts-expect-error — override RN global for this test
+    global.__DEV__ = false;
+    try {
+      const { queryByTestId } = renderScreen();
+      expect(queryByTestId('dev-pick-photo')).toBeNull();
+    } finally {
+      // @ts-expect-error — restore
+      global.__DEV__ = true;
+    }
+  });
+
+  it('picking an image from the library triggers the upload pipeline', async () => {
+    mockLaunchImageLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: '/tmp/picked.jpg', mimeType: 'image/jpeg' }],
+    });
+    mockUpload.mockResolvedValue({ photoId: 'photo-dev' });
+
+    const { getByTestId } = renderScreen();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('dev-pick-photo'));
+    });
+
+    await waitFor(() => {
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filePath: '/tmp/picked.jpg',
+          mimeType: 'image/jpeg',
+        }),
+      );
     });
   });
 });

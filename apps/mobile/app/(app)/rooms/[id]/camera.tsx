@@ -8,6 +8,10 @@
  *
  * Error mapping is handled by mapUploadError from lib/camera.
  * No gradients — solid colors only.
+ *
+ * Dev-only: when no camera device is detected (simulator), a "Pick test photo"
+ * button is rendered (__DEV__ guard) so the full upload pipeline can be exercised
+ * without physical hardware. This button is absent in production builds.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,6 +23,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Camera, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
 import {
@@ -82,29 +87,13 @@ export default function CameraScreen() {
     );
   }
 
-  // ── No camera device ─────────────────────────────────────────────────────
+  // ── Shared upload helpers ────────────────────────────────────────────────
+  // Defined before the device==null early return so they are accessible in
+  // both the no-device branch (dev picker) and the main camera render path.
 
-  if (device == null) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centred]}>
-        <Text style={styles.message}>Camera unavailable on this device.</Text>
-        <Pressable
-          style={styles.closeLink}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Close camera"
-        >
-          <Text style={styles.closeLinkLabel}>Close</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Capture + upload ─────────────────────────────────────────────────────
-
-  async function runUpload(localId: string, filePath: string) {
+  async function runUpload(localId: string, filePath: string, mimeType: string = 'image/jpeg') {
     try {
-      await upload({ filePath, mimeType: 'image/jpeg', takenAt: new Date().toISOString() });
+      await upload({ filePath, mimeType, takenAt: new Date().toISOString() });
       setUploads((prev) =>
         prev.map((u) => (u.localId === localId ? { ...u, status: 'done' as const } : u)),
       );
@@ -122,6 +111,104 @@ export default function CameraScreen() {
       );
     }
   }
+
+  function handleRetry(entry: UploadEntry) {
+    if (!entry.filePath) return;
+    setUploads((prev) =>
+      prev.map((u) =>
+        u.localId === entry.localId
+          ? { ...u, status: 'uploading' as const, errorMsg: undefined }
+          : u,
+      ),
+    );
+    void runUpload(entry.localId, entry.filePath);
+  }
+
+  async function handlePickTestPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    const localId = String(Date.now());
+    setUploads((prev) => [...prev, { localId, filePath: asset.uri, status: 'uploading' }]);
+    void runUpload(localId, asset.uri, asset.mimeType ?? 'image/jpeg');
+  }
+
+  // ── Upload tiles (shared render helper) ──────────────────────────────────
+
+  function renderUploadTiles(containerStyle: object) {
+    if (uploads.length === 0) return null;
+    return (
+      <View style={containerStyle} testID="uploads-overlay">
+        {uploads.map((entry) => (
+          <View
+            key={entry.localId}
+            style={styles.uploadTile}
+            testID={`upload-tile-${entry.localId}`}
+          >
+            {entry.status === 'uploading' && (
+              <ActivityIndicator
+                size="small"
+                color={colors.cream}
+                testID={`spinner-${entry.localId}`}
+              />
+            )}
+            {entry.status === 'done' && <Text style={styles.uploadDoneText}>✓</Text>}
+            {entry.status === 'error' && (
+              <>
+                <Text style={styles.uploadErrorText}>{entry.errorMsg}</Text>
+                <Pressable
+                  onPress={() => handleRetry(entry)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry upload"
+                >
+                  <Text style={styles.retryLabel}>Retry</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  // ── No camera device ─────────────────────────────────────────────────────
+
+  if (device == null) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centred]}>
+        <Text style={styles.message}>Camera unavailable on this device.</Text>
+
+        {renderUploadTiles(styles.uploadsInline)}
+
+        {__DEV__ && (
+          <Pressable
+            style={styles.devPickerButton}
+            onPress={() => void handlePickTestPhoto()}
+            accessibilityRole="button"
+            accessibilityLabel="Pick test photo (dev only)"
+            testID="dev-pick-photo"
+          >
+            <Text style={styles.devPickerLabel}>Pick test photo (dev only)</Text>
+          </Pressable>
+        )}
+
+        <Pressable
+          style={styles.closeLink}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Close camera"
+        >
+          <Text style={styles.closeLinkLabel}>Close</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Capture ──────────────────────────────────────────────────────────────
 
   async function handleCapture() {
     if (capturing) return;
@@ -149,18 +236,6 @@ export default function CameraScreen() {
     void runUpload(localId, filePath);
   }
 
-  function handleRetry(entry: UploadEntry) {
-    if (!entry.filePath) return;
-    setUploads((prev) =>
-      prev.map((u) =>
-        u.localId === entry.localId
-          ? { ...u, status: 'uploading' as const, errorMsg: undefined }
-          : u,
-      ),
-    );
-    void runUpload(entry.localId, entry.filePath);
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -179,39 +254,7 @@ export default function CameraScreen() {
         </Pressable>
       </SafeAreaView>
 
-      {/* Upload tiles overlay */}
-      {uploads.length > 0 && (
-        <View style={styles.uploadsOverlay} testID="uploads-overlay">
-          {uploads.map((entry) => (
-            <View
-              key={entry.localId}
-              style={styles.uploadTile}
-              testID={`upload-tile-${entry.localId}`}
-            >
-              {entry.status === 'uploading' && (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.cream}
-                  testID={`spinner-${entry.localId}`}
-                />
-              )}
-              {entry.status === 'done' && <Text style={styles.uploadDoneText}>✓</Text>}
-              {entry.status === 'error' && (
-                <>
-                  <Text style={styles.uploadErrorText}>{entry.errorMsg}</Text>
-                  <Pressable
-                    onPress={() => handleRetry(entry)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retry upload"
-                  >
-                    <Text style={styles.retryLabel}>Retry</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
+      {renderUploadTiles(styles.uploadsOverlay)}
 
       {/* Capture button */}
       <View style={styles.captureBar}>
@@ -297,6 +340,11 @@ const styles = StyleSheet.create({
     right: spacing.md,
     gap: spacing.sm,
   },
+  uploadsInline: {
+    alignSelf: 'stretch',
+    marginHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
   uploadTile: {
     backgroundColor: 'rgba(10, 10, 10, 0.75)',
     borderRadius: radii.button,
@@ -346,5 +394,16 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: colors.primary,
+  },
+  devPickerButton: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.button,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  devPickerLabel: {
+    fontFamily: fonts.label,
+    fontSize: fontSizes.body1,
+    color: colors.coal,
   },
 });

@@ -18,7 +18,8 @@
       "bundleIdentifier": "app.sher.mobile",
       "infoPlist": {
         "NSCameraUsageDescription": "Sher needs camera access to capture photos for your room.",
-        "NSMicrophoneUsageDescription": "Sher requests microphone access as required by the camera system."
+        "NSMicrophoneUsageDescription": "Sher requests microphone access as required by the camera system.",
+        "NSPhotoLibraryUsageDescription": "Sher needs access to your photo library to pick test photos in development."
       }
     },
     "android": {
@@ -29,7 +30,7 @@
       "package": "app.sher.mobile",
       "permissions": ["android.permission.CAMERA"]
     },
-    "plugins": ["expo-router", "expo-secure-store", "expo-build-properties"],
+    "plugins": ["expo-router", "expo-secure-store", "expo-build-properties", "expo-image-picker"],
     "experiments": {
       "typedRoutes": true
     }

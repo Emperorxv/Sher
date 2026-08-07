@@ -22,6 +22,7 @@
     "expo-build-properties": "~55.0.14",
     "expo-camera": "^55.0.19",
     "expo-font": "^55.0.8",
+    "expo-image-picker": "~55.0.22",
     "expo-linking": "~55.0.15",
     "expo-router": "~55.0.14",
     "expo-secure-store": "~55.0.14",

@@ -51,6 +51,8 @@
 	<string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sher requests microphone access as required by the camera system.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sher needs access to your photo library to pick test photos in development.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
