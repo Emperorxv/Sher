@@ -80,6 +80,10 @@ export class StorageService {
           accessKeyId: cfg.accessKeyId,
           secretAccessKey: cfg.secretAccessKey,
         },
+        // R2 requires path-style URLs: <account-id>.r2.cloudflarestorage.com/<bucket>/<key>
+        // Without this, the SDK defaults to virtual-hosted-style (bucket.account.r2...) which
+        // R2 does not serve — resulting in TCP-level connection refusals on presigned URLs.
+        forcePathStyle: true,
       });
     }
     return this._client;

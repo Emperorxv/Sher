@@ -326,5 +326,19 @@ describe('StorageService', () => {
       const calls = s3Mock.commandCalls(DeleteObjectCommand);
       expect(calls).toHaveLength(1);
     });
+
+    it('S3Client is configured with forcePathStyle: true for R2 path-style URL compatibility', async () => {
+      // Regression: without forcePathStyle the SDK defaults to virtual-hosted-style
+      // (bucket.account.r2.cloudflarestorage.com) which R2 does not serve — causing
+      // TCP-level connection refusals on every presigned URL.
+      setEnv();
+      s3Mock.on(DeleteObjectCommand).resolves({});
+
+      const svc = new StorageService();
+      await svc.deleteObject('k'); // triggers lazy client creation
+
+      const client = (svc as unknown as { _client: S3Client })._client;
+      expect(client!.config.forcePathStyle).toBe(true);
+    });
   });
 });
