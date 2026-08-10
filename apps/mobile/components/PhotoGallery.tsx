@@ -5,7 +5,12 @@
  *   loading   — ActivityIndicator while usePhotos fetches.
  *   locked    — LockedGalleryPlaceholder when meta.locked is true.
  *   empty     — "No photos yet." / "You haven't taken any photos yet."
- *   populated — 3-column thumbnail FlatList.
+ *   populated — 3-column thumbnail grid (View + .map(), NOT FlatList).
+ *
+ * Why not FlatList: FlatList nested inside a parent ScrollView renders
+ * with zero visible height unless given an explicit height, making all
+ * photo tiles invisible even when data is valid.  The plain View grid
+ * has no such constraint.
  *
  * The scope toggle (All | Mine) is always rendered above the content area
  * and is disabled (dimmed, taps ignored) while a fetch is in-flight.
@@ -14,16 +19,7 @@
  * No gradients; solid colors only.
  */
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePhotos } from '../lib/photos';
 import { LockedGalleryPlaceholder } from './LockedGalleryPlaceholder';
@@ -43,6 +39,15 @@ export type PhotoGalleryProps = {
 };
 
 const COLUMNS = 3;
+
+/** Splits an array into fixed-size chunks (last chunk may be smaller). */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    rows.push(arr.slice(i, i + size));
+  }
+  return rows;
+}
 
 export function PhotoGallery({
   roomId,
@@ -104,50 +109,57 @@ export function PhotoGallery({
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={data.data}
-          keyExtractor={(p) => p.id}
-          numColumns={COLUMNS}
-          scrollEnabled={false}
-          testID="gallery-grid"
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
-              onLongPress={() => {
-                const isOwn = currentUserId && item.uploaderId === currentUserId && onDeletePhoto;
-                if (isOwn) {
-                  Alert.alert('Photo options', '', [
-                    {
-                      text: 'Delete photo',
-                      style: 'destructive',
-                      onPress: () => onDeletePhoto(item.id),
-                    },
-                    { text: 'Report photo', onPress: () => setReportPhotoId(item.id) },
-                    { text: 'Cancel', style: 'cancel' },
-                  ]);
-                } else {
-                  setReportPhotoId(item.id);
-                }
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="View photo"
-              testID={`photo-tile-${item.id}`}
-            >
-              {item.thumbUrl ? (
-                <Image
-                  source={{ uri: item.thumbUrl }}
-                  style={styles.thumb}
-                  testID={`photo-thumb-${item.id}`}
-                />
-              ) : (
-                <View
-                  style={[styles.thumb, styles.thumbPending]}
-                  testID={`photo-pending-${item.id}`}
-                />
-              )}
-            </Pressable>
-          )}
-        />
+        // Plain View grid — avoids the FlatList zero-height bug when nested in ScrollView.
+        <View testID="gallery-grid">
+          {chunk(data.data, COLUMNS).map((row, rowIdx) => (
+            <View key={rowIdx} style={styles.gridRow}>
+              {row.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.thumbWrapper}
+                  onPress={() => router.push(`/rooms/${roomId}/photo/${item.id}`)}
+                  onLongPress={() => {
+                    const isOwn =
+                      currentUserId && item.uploaderId === currentUserId && onDeletePhoto;
+                    if (isOwn) {
+                      Alert.alert('Photo options', '', [
+                        {
+                          text: 'Delete photo',
+                          style: 'destructive',
+                          onPress: () => onDeletePhoto(item.id),
+                        },
+                        { text: 'Report photo', onPress: () => setReportPhotoId(item.id) },
+                        { text: 'Cancel', style: 'cancel' },
+                      ]);
+                    } else {
+                      setReportPhotoId(item.id);
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="View photo"
+                  testID={`photo-tile-${item.id}`}
+                >
+                  {item.thumbUrl ? (
+                    <Image
+                      source={{ uri: item.thumbUrl }}
+                      style={styles.thumb}
+                      testID={`photo-thumb-${item.id}`}
+                    />
+                  ) : (
+                    <View
+                      style={[styles.thumb, styles.thumbPending]}
+                      testID={`photo-pending-${item.id}`}
+                    />
+                  )}
+                </Pressable>
+              ))}
+              {/* Filler slots so flex-1 items in an incomplete row stay 1/3 wide. */}
+              {Array.from({ length: COLUMNS - row.length }).map((_, i) => (
+                <View key={`filler-${rowIdx}-${i}`} style={styles.thumbWrapper} />
+              ))}
+            </View>
+          ))}
+        </View>
       )}
 
       {reportPhotoId && (
@@ -207,8 +219,13 @@ const styles = StyleSheet.create({
     color: colors.coal,
     opacity: 0.5,
   },
-  thumb: {
+  gridRow: {
+    flexDirection: 'row',
+  },
+  thumbWrapper: {
     flex: 1,
+  },
+  thumb: {
     aspectRatio: 1,
     margin: 2,
     borderRadius: radii.button,

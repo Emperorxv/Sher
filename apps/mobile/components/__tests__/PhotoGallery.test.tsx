@@ -143,6 +143,26 @@ describe('PhotoGallery', () => {
     fireEvent.press(getByTestId('photo-tile-photo-1'));
     expect(mockRouterPush).toHaveBeenCalledWith('/rooms/room-1/photo/photo-1');
   });
+
+  it('renders all 5 tiles for 2 full rows + 1 partial row (FlatList zero-height regression)', () => {
+    // Regression: FlatList nested in a ScrollView rendered zero visible height,
+    // making all tiles invisible even with valid data.  This test asserts that
+    // every photo-tile testID is present in the rendered tree regardless of row
+    // count or partial-row handling.
+    const fivePhotos: PhotoListResponseDto = {
+      data: [1, 2, 3, 4, 5].map((n) => ({
+        ...PHOTO_READY,
+        id: `photo-${n}`,
+        thumbUrl: `https://r2.example.com/thumb/photo-${n}.jpg`,
+      })),
+      meta: { locked: false, nextCursor: null },
+    };
+    mockUsePhotos.mockReturnValue({ data: fivePhotos, isLoading: false });
+    const { getByTestId } = render(<PhotoGallery roomId="room-1" />);
+    for (let n = 1; n <= 5; n++) {
+      expect(getByTestId(`photo-tile-photo-${n}`)).toBeTruthy();
+    }
+  });
 });
 
 // ── Long-press behavior ────────────────────────────────────────────────────────
