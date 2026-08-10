@@ -28,6 +28,7 @@ jest.mock('../../../../../lib/photos', () => ({
   usePhoto: (...args: unknown[]) => mockUsePhoto(...args),
   usePhotos: jest.fn(() => ({ data: undefined, isLoading: false })),
   photoKeys: {
+    lists: (roomId: string) => ['rooms', roomId, 'photos'],
     list: (roomId: string) => ['rooms', roomId, 'photos'],
     detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],
   },

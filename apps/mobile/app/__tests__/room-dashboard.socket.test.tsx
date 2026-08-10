@@ -87,6 +87,7 @@ jest.mock('../../lib/photos', () => ({
   })),
   useDeletePhoto: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   photoKeys: {
+    lists: (roomId: string) => ['rooms', roomId, 'photos'],
     list: (roomId: string) => ['rooms', roomId, 'photos'],
     detail: (roomId: string, photoId: string) => ['rooms', roomId, 'photos', photoId],
   },
@@ -240,6 +241,34 @@ describe('RoomDashboard socket → query invalidation', () => {
     // Must NOT invalidate member or room-detail keys (photo events don't change member count)
     expect(spy).not.toHaveBeenCalledWith({ queryKey: ['rooms', 'members', ROOM_ID] });
     expect(spy).not.toHaveBeenCalledWith({ queryKey: ['rooms', 'detail', ROOM_ID] });
+  });
+
+  it('room:base_unlocked invalidates unlockStatus, members, AND photos (gallery cache flush)', async () => {
+    // Regression: before this fix, room:base_unlocked invalidated unlockStatus and members
+    // but not the photo cache, so the gallery kept serving a stale locked response even
+    // after the host paid — on EVERY connected device, not just the paying one.
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    await renderAndWaitForSubscription(qc);
+
+    capturedHandlers['room:base_unlocked']?.({ roomId: ROOM_ID });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.unlockStatus(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: photoKeys.lists(ROOM_ID) });
+  });
+
+  it('member:unlocked invalidates unlockStatus, members, AND photos (gallery cache flush)', async () => {
+    // Same gap as room:base_unlocked — a self-pay unlock also needs the photo cache cleared.
+    const qc = makeQc();
+    const spy = jest.spyOn(qc, 'invalidateQueries');
+    await renderAndWaitForSubscription(qc);
+
+    capturedHandlers['member:unlocked']?.({ roomId: ROOM_ID, userId: 'user-extra-1' });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.unlockStatus(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: roomKeys.members(ROOM_ID) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: photoKeys.lists(ROOM_ID) });
   });
 
   /**

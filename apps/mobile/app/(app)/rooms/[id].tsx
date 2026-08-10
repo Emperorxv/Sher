@@ -175,10 +175,14 @@ export default function RoomDashboard() {
         'room:base_unlocked': () => {
           void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(id) });
           void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
+          // Invalidate all photo scopes so the gallery drops its locked cache.
+          void qc.invalidateQueries({ queryKey: photoKeys.lists(id) });
         },
         'member:unlocked': () => {
           void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(id) });
           void qc.invalidateQueries({ queryKey: roomKeys.members(id) });
+          // Same: a member unlock changes who can view the gallery.
+          void qc.invalidateQueries({ queryKey: photoKeys.lists(id) });
         },
         'room:retention_extended': () => {
           void qc.invalidateQueries({ queryKey: roomKeys.detail(id) });
