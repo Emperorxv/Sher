@@ -3,7 +3,8 @@
  *
  * Mock strategy:
  *  - sharp          → jest.mock (module-level factory), returns a chain that
- *                     yields a fixed webp Buffer from .toBuffer()
+ *                     yields a fixed webp Buffer from .toBuffer() and fixed
+ *                     dimensions from .metadata()
  *  - StorageService → inline jest.fn() mock
  *  - PrismaService  → inline jest.fn() mock
  *  - RoomsGateway   → inline jest.fn() mock
@@ -24,6 +25,8 @@ jest.mock('sharp', () => {
   const instance = {
     resize: jest.fn().mockReturnThis(),
     webp: jest.fn().mockReturnThis(),
+    composite: jest.fn().mockReturnThis(),
+    metadata: jest.fn().mockResolvedValue({ width: 480, height: 360 }),
     toBuffer,
   };
   return jest.fn().mockReturnValue(instance);
@@ -41,7 +44,10 @@ const UPLOADER_ID = 'user-1';
 const STORAGE_KEY = `originals/${ROOM_ID}/${PHOTO_ID}.jpg`;
 const THUMB_KEY = `thumbs/${ROOM_ID}/${PHOTO_ID}.webp`;
 const MEDIUM_KEY = `medium/${ROOM_ID}/${PHOTO_ID}.webp`;
+const THUMB_WM_KEY = `thumbs-wm/${ROOM_ID}/${PHOTO_ID}.webp`;
+const MEDIUM_WM_KEY = `medium-wm/${ROOM_ID}/${PHOTO_ID}.webp`;
 const THUMB_URL = 'https://r2.example.com/thumb-signed';
+const THUMB_WM_URL = 'https://r2.example.com/thumb-wm-signed';
 const ORIGINAL_BUFFER = Buffer.from('jpeg-original');
 
 const UPLOADING_PHOTO = {
@@ -52,6 +58,8 @@ const UPLOADING_PHOTO = {
   storageKey: STORAGE_KEY,
   thumbKey: null as string | null,
   mediumKey: null as string | null,
+  thumbWmKey: null as string | null,
+  mediumWmKey: null as string | null,
   deletedAt: null as Date | null,
 };
 
@@ -74,7 +82,11 @@ function makeStorage() {
   return {
     getObjectBuffer: jest.fn().mockResolvedValue(ORIGINAL_BUFFER),
     putObject: jest.fn().mockResolvedValue(undefined),
-    createSignedGetUrl: jest.fn().mockResolvedValue(THUMB_URL),
+    createSignedGetUrl: jest
+      .fn()
+      .mockImplementation((key: string) =>
+        Promise.resolve(key.includes('-wm/') ? THUMB_WM_URL : THUMB_URL),
+      ),
   };
 }
 
@@ -113,41 +125,57 @@ describe('PhotoProcessorService.process — happy path', () => {
     expect(storage.getObjectBuffer).toHaveBeenCalledWith(STORAGE_KEY);
   });
 
-  it('uploads thumb and medium derivatives to R2', async () => {
+  it('does not write to the originals/ prefix — original file is never modified', async () => {
+    const { svc, storage } = makeService();
+    await svc.process(JOB_DATA);
+    const putCalls: string[] = (storage.putObject.mock.calls as [string][]).map(([key]) => key);
+    expect(putCalls.every((k) => !k.startsWith('originals/'))).toBe(true);
+  });
+
+  it('uploads all four derivatives (clean thumb, clean medium, wm thumb, wm medium)', async () => {
     const { svc, storage } = makeService();
     await svc.process(JOB_DATA);
 
-    expect(storage.putObject).toHaveBeenCalledTimes(2);
+    expect(storage.putObject).toHaveBeenCalledTimes(4);
     expect(storage.putObject).toHaveBeenCalledWith(THUMB_KEY, expect.any(Buffer), 'image/webp');
     expect(storage.putObject).toHaveBeenCalledWith(MEDIUM_KEY, expect.any(Buffer), 'image/webp');
+    expect(storage.putObject).toHaveBeenCalledWith(THUMB_WM_KEY, expect.any(Buffer), 'image/webp');
+    expect(storage.putObject).toHaveBeenCalledWith(MEDIUM_WM_KEY, expect.any(Buffer), 'image/webp');
   });
 
-  it('marks the photo READY and sets thumbKey and mediumKey', async () => {
+  it('marks the photo READY and sets all four keys', async () => {
     const { svc, prisma } = makeService();
     await svc.process(JOB_DATA);
 
     expect(prisma.photo.update).toHaveBeenCalledWith({
       where: { id: PHOTO_ID },
-      data: { status: PhotoStatus.READY, thumbKey: THUMB_KEY, mediumKey: MEDIUM_KEY },
+      data: {
+        status: PhotoStatus.READY,
+        thumbKey: THUMB_KEY,
+        mediumKey: MEDIUM_KEY,
+        thumbWmKey: THUMB_WM_KEY,
+        mediumWmKey: MEDIUM_WM_KEY,
+      },
     });
   });
 
-  it('emits photo:new with photoId, thumbUrl, and uploaderId', async () => {
+  it('emits photo:new with the watermarked thumb URL (unconditionally)', async () => {
     const { svc, gateway } = makeService();
     await svc.process(JOB_DATA);
 
     expect(gateway.emitPhotoNew).toHaveBeenCalledWith(ROOM_ID, {
       photoId: PHOTO_ID,
-      thumbUrl: THUMB_URL,
+      thumbUrl: THUMB_WM_URL,
       uploaderId: UPLOADER_ID,
     });
   });
 
-  it('generates a signed GET URL for the thumb key', async () => {
+  it('generates a signed GET URL for the watermarked thumb key (not the clean key)', async () => {
     const { svc, storage } = makeService();
     await svc.process(JOB_DATA);
 
-    expect(storage.createSignedGetUrl).toHaveBeenCalledWith(THUMB_KEY, expect.any(Number));
+    expect(storage.createSignedGetUrl).toHaveBeenCalledWith(THUMB_WM_KEY, expect.any(Number));
+    expect(storage.createSignedGetUrl).not.toHaveBeenCalledWith(THUMB_KEY, expect.any(Number));
   });
 });
 
