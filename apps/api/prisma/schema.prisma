@@ -175,8 +175,10 @@ model Photo {
   roomId     String
   uploaderId String
   storageKey String // R2 object key (originals/{room}/{id}.jpg)
-  thumbKey   String?
-  mediumKey  String?
+  thumbKey    String?
+  mediumKey   String?
+  thumbWmKey  String? // R2 key for watermarked thumbnail (thumbs-wm/{roomId}/{photoId}.webp)
+  mediumWmKey String? // R2 key for watermarked medium (medium-wm/{roomId}/{photoId}.webp)
   mimeType   String
   sizeBytes  Int
   width      Int?
