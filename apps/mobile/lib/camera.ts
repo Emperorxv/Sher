@@ -53,36 +53,27 @@ export function useUploadPhoto(roomId: string): {
   upload: (input: UploadPhotoInput) => Promise<UploadPhotoResult>;
 } {
   const upload = async (input: UploadPhotoInput): Promise<UploadPhotoResult> => {
-    // Read the file as a blob to get its byte size for the API call.
     const blob = await fetch(input.filePath).then((r) => r.blob());
     const sizeBytes = blob.size;
-
     const body: GetUploadUrlBodyDto = {
       mimeType: input.mimeType,
       sizeBytes,
       takenAt: input.takenAt,
       filter: input.filter,
     };
-
     const { uploadUrl, photoId } = await apiClient.photos.getUploadUrl(roomId, body);
-
     const putRes = await fetch(uploadUrl, {
       method: 'PUT',
       body: blob,
       headers: { 'Content-Type': input.mimeType },
     });
-
-    if (!putRes.ok) {
-      throw new ApiError(putRes.status, 'UPLOAD_FAILED', 'Upload to storage failed.');
-    }
-
+    if (!putRes.ok) throw new ApiError(putRes.status, 'UPLOAD_FAILED', 'Upload to storage failed.');
     await apiClient.photos.commit(roomId, photoId);
     return { photoId };
   };
 
-  return { upload };
+  return { upload }; // ← this closing part must exist for useUploadPhoto
 }
-
 // ── Error mapping ──────────────────────────────────────────────────────────────
 
 /**
