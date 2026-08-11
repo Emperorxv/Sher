@@ -163,7 +163,7 @@ export class PhotosService {
     const items = hasMore ? rows.slice(0, safeLimit) : rows;
     const nextCursor = hasMore ? (items[items.length - 1]?.id ?? null) : null;
 
-    const data = await Promise.all(items.map((p) => this.toPhotoDto(p)));
+    const data = await Promise.all(items.map((p) => this.toPhotoDto(p, isUnlocked)));
 
     return { data, meta: { locked: false, nextCursor } };
   }
@@ -188,22 +188,12 @@ export class PhotosService {
       throw new NotFoundException({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found.' });
     }
 
-    const [thumbUrl, mediumUrl, originalUrl] = await Promise.all([
-      photo.thumbKey
-        ? this.storage.createSignedGetUrl(photo.thumbKey, SIGNED_URL_TTL_SECONDS)
-        : Promise.resolve(null),
-      photo.mediumKey
-        ? this.storage.createSignedGetUrl(photo.mediumKey, SIGNED_URL_TTL_SECONDS)
-        : Promise.resolve(null),
-      this.storage.createSignedGetUrl(photo.storageKey, SIGNED_URL_TTL_SECONDS),
-    ]);
+    const originalUrl = await this.storage.createSignedGetUrl(
+      photo.storageKey,
+      SIGNED_URL_TTL_SECONDS,
+    );
 
-    return {
-      ...(await this.toPhotoDto(photo)),
-      originalUrl,
-      thumbUrl,
-      mediumUrl,
-    };
+    return { ...(await this.toPhotoDto(photo, isUnlocked)), originalUrl };
   }
 
   // ── Delete photo ─────────────────────────────────────────────────────────────
@@ -247,25 +237,48 @@ export class PhotosService {
     return { membership, room };
   }
 
-  private async toPhotoDto(photo: {
-    id: string;
-    roomId: string;
-    uploaderId: string;
-    status: PhotoStatus;
-    mimeType: string;
-    sizeBytes: number;
-    takenAt: Date | null;
-    filter: string | null;
-    thumbKey: string | null;
-    mediumKey: string | null;
-    createdAt: Date;
-  }): Promise<PhotoDto> {
+  /**
+   * Builds a PhotoDto for a single photo row.
+   *
+   * URL selection is unlock-aware:
+   *  - When isUnlocked is false (room not yet paid for, or ACTIVE), the
+   *    watermarked wm keys are used — thumb URL points to thumbs-wm/, medium
+   *    URL to medium-wm/.  Falls back to the clean key for photos processed
+   *    before this feature (thumbWmKey is null).
+   *  - When isUnlocked is true (ROOM_UNLOCK or BASE_UNLOCK payment succeeded),
+   *    the clean keys are used — thumbs/ and medium/.
+   *
+   * The original storageKey is never exposed here; getPhoto signs it separately.
+   */
+  private async toPhotoDto(
+    photo: {
+      id: string;
+      roomId: string;
+      uploaderId: string;
+      status: PhotoStatus;
+      mimeType: string;
+      sizeBytes: number;
+      takenAt: Date | null;
+      filter: string | null;
+      thumbKey: string | null;
+      mediumKey: string | null;
+      thumbWmKey: string | null;
+      mediumWmKey: string | null;
+      createdAt: Date;
+    },
+    isUnlocked: boolean,
+  ): Promise<PhotoDto> {
+    const effectiveThumbKey = isUnlocked ? photo.thumbKey : (photo.thumbWmKey ?? photo.thumbKey);
+    const effectiveMediumKey = isUnlocked
+      ? photo.mediumKey
+      : (photo.mediumWmKey ?? photo.mediumKey);
+
     const [thumbUrl, mediumUrl] = await Promise.all([
-      photo.thumbKey
-        ? this.storage.createSignedGetUrl(photo.thumbKey, SIGNED_URL_TTL_SECONDS)
+      effectiveThumbKey
+        ? this.storage.createSignedGetUrl(effectiveThumbKey, SIGNED_URL_TTL_SECONDS)
         : Promise.resolve(null),
-      photo.mediumKey
-        ? this.storage.createSignedGetUrl(photo.mediumKey, SIGNED_URL_TTL_SECONDS)
+      effectiveMediumKey
+        ? this.storage.createSignedGetUrl(effectiveMediumKey, SIGNED_URL_TTL_SECONDS)
         : Promise.resolve(null),
     ]);
 

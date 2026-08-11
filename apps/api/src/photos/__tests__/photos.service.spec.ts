@@ -7,8 +7,10 @@
  * Coverage targets:
  *  getUploadUrl  — happy path, MIME reject, size reject, room not active, not member
  *  commit        — happy path, not uploader, photo not found, idempotent (already committed)
- *  listPhotos    — happy path, LOCKED/ENDED returns empty+meta.locked, cursor pagination
- *  getPhoto      — happy path, LOCKED/ENDED returns 403, not found
+ *  listPhotos    — happy path, LOCKED/ENDED returns empty+meta.locked, cursor pagination,
+ *                  watermark URL selection (locked vs unlocked rooms)
+ *  getPhoto      — happy path, LOCKED/ENDED returns 403, not found,
+ *                  watermark URL selection, fallback for legacy photos
  */
 
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -23,6 +25,8 @@ const PHOTO_ID = 'photo-1';
 const UPLOAD_URL = 'https://r2.example.com/put-signed';
 const THUMB_URL = 'https://r2.example.com/thumb';
 const MEDIUM_URL = 'https://r2.example.com/medium';
+const THUMB_WM_URL = 'https://r2.example.com/thumb-wm';
+const MEDIUM_WM_URL = 'https://r2.example.com/medium-wm';
 
 const ACTIVE_ROOM = {
   id: ROOM_ID,
@@ -50,6 +54,7 @@ const MEMBERSHIP_UNLOCKED = {
 const MEMBERSHIP_LOCKED = { ...MEMBERSHIP_UNLOCKED, unlockState: 'LOCKED' as const };
 const MEMBERSHIP_EXEMPT = { ...MEMBERSHIP_UNLOCKED, unlockState: 'EXEMPT' as const };
 
+// Photo with watermarked keys — represents a photo processed after this feature landed.
 const READY_PHOTO = {
   id: PHOTO_ID,
   roomId: ROOM_ID,
@@ -61,9 +66,18 @@ const READY_PHOTO = {
   filter: null,
   thumbKey: `thumbs/${ROOM_ID}/${PHOTO_ID}.webp`,
   mediumKey: `medium/${ROOM_ID}/${PHOTO_ID}.webp`,
+  thumbWmKey: `thumbs-wm/${ROOM_ID}/${PHOTO_ID}.webp`,
+  mediumWmKey: `medium-wm/${ROOM_ID}/${PHOTO_ID}.webp`,
   storageKey: `originals/${ROOM_ID}/${PHOTO_ID}.jpg`,
   createdAt: new Date('2026-06-01T12:00:01Z'),
   deletedAt: null,
+};
+
+// Legacy photo without wm keys — processed before this feature; fallback must serve clean URLs.
+const LEGACY_PHOTO = {
+  ...READY_PHOTO,
+  thumbWmKey: null,
+  mediumWmKey: null,
 };
 
 const UPLOADING_PHOTO = {
@@ -71,6 +85,8 @@ const UPLOADING_PHOTO = {
   status: PhotoStatus.UPLOADING,
   thumbKey: null,
   mediumKey: null,
+  thumbWmKey: null,
+  mediumWmKey: null,
 };
 
 // ── Mock factories ─────────────────────────────────────────────────────────────
@@ -97,6 +113,8 @@ function makeStorage() {
   return {
     createPresignedPutUrl: jest.fn().mockResolvedValue(UPLOAD_URL),
     createSignedGetUrl: jest.fn().mockImplementation((key: string) => {
+      if (key.startsWith('thumbs-wm/')) return Promise.resolve(THUMB_WM_URL);
+      if (key.startsWith('medium-wm/')) return Promise.resolve(MEDIUM_WM_URL);
       if (key.startsWith('thumbs/')) return Promise.resolve(THUMB_URL);
       if (key.startsWith('medium/')) return Promise.resolve(MEDIUM_URL);
       return Promise.resolve('https://r2.example.com/original');
@@ -240,12 +258,53 @@ describe('PhotosService.commit', () => {
 // ── listPhotos ────────────────────────────────────────────────────────────────
 
 describe('PhotosService.listPhotos', () => {
-  it('returns photos with signed URLs for an unlocked member', async () => {
-    const svc = makeService();
+  it('returns WATERMARKED urls for ACTIVE room (room not yet unlocked)', async () => {
+    // ACTIVE rooms always serve watermarked URLs — watermark applies from moment of capture.
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
+    });
     const result = await svc.listPhotos(ROOM_ID, USER_ID);
 
     expect(result.meta.locked).toBe(false);
     expect(result.data).toHaveLength(1);
+    expect(result.data[0]!.thumbUrl).toBe(THUMB_WM_URL);
+    expect(result.data[0]!.mediumUrl).toBe(MEDIUM_WM_URL);
+  });
+
+  it('returns CLEAN urls when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
+    // Regression: dual-field check — room.unlockedAt triggers clean URL selection.
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
+    });
+    const result = await svc.listPhotos(ROOM_ID, USER_ID);
+
+    expect(result.meta.locked).toBe(false);
+    expect(result.data[0]!.thumbUrl).toBe(THUMB_URL);
+    expect(result.data[0]!.mediumUrl).toBe(MEDIUM_URL);
+  });
+
+  it('returns CLEAN urls when room.baseUnlockedAt is set (BASE_UNLOCK model)', async () => {
+    // Regression: dual-field check — room.baseUnlockedAt also triggers clean URL selection.
+    const svc = makeService({
+      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_EXEMPT) },
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_BASE_UNLOCKED) },
+    });
+    const result = await svc.listPhotos(ROOM_ID, USER_ID);
+
+    expect(result.meta.locked).toBe(false);
+    expect(result.data[0]!.thumbUrl).toBe(THUMB_URL);
+    expect(result.data[0]!.mediumUrl).toBe(MEDIUM_URL);
+  });
+
+  it('falls back to clean urls for legacy photos that have no wm keys', async () => {
+    // Photos processed before this feature have null thumbWmKey/mediumWmKey.
+    // They should serve clean URLs (fallback) rather than null URLs.
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
+      photo: { findMany: jest.fn().mockResolvedValue([LEGACY_PHOTO]) },
+    });
+    const result = await svc.listPhotos(ROOM_ID, USER_ID);
+
     expect(result.data[0]!.thumbUrl).toBe(THUMB_URL);
     expect(result.data[0]!.mediumUrl).toBe(MEDIUM_URL);
   });
@@ -261,7 +320,8 @@ describe('PhotosService.listPhotos', () => {
     expect(result.meta.locked).toBe(true);
   });
 
-  it('returns photos for LOCKED member in ACTIVE room (paywall not yet engaged)', async () => {
+  it('returns photos for LOCKED member in ACTIVE room with watermarked URLs', async () => {
+    // Paywall has not yet engaged (room still ACTIVE) — gallery shows, but watermarked.
     const svc = makeService({
       membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_LOCKED) },
       room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
@@ -270,31 +330,7 @@ describe('PhotosService.listPhotos', () => {
 
     expect(result.meta.locked).toBe(false);
     expect(result.data).toHaveLength(1);
-  });
-
-  it('returns photos for EXEMPT member when BASE_UNLOCK was paid (baseUnlockedAt set)', async () => {
-    // EXEMPT memberships exist only when BASE_UNLOCK succeeded, so baseUnlockedAt is set.
-    const svc = makeService({
-      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_EXEMPT) },
-      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_BASE_UNLOCKED) },
-    });
-    const result = await svc.listPhotos(ROOM_ID, USER_ID);
-
-    expect(result.meta.locked).toBe(false);
-    expect(result.data).toHaveLength(1);
-  });
-
-  it('returns photos for LOCKED membership when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
-    // Core new assertion: room-level unlock makes gallery visible even when
-    // individual membership.unlockState is still LOCKED.
-    const svc = makeService({
-      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_LOCKED) },
-      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
-    });
-    const result = await svc.listPhotos(ROOM_ID, USER_ID);
-
-    expect(result.meta.locked).toBe(false);
-    expect(result.data).toHaveLength(1);
+    expect(result.data[0]!.thumbUrl).toBe(THUMB_WM_URL);
   });
 
   it('throws 403 when caller is not a member', async () => {
@@ -362,13 +398,49 @@ describe('PhotosService.listPhotos', () => {
 // ── getPhoto ──────────────────────────────────────────────────────────────────
 
 describe('PhotosService.getPhoto', () => {
-  it('returns photo with thumb, medium, and original signed URLs', async () => {
-    const svc = makeService();
+  it('returns WATERMARKED thumb+medium URLs for ACTIVE room (not yet unlocked)', async () => {
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
+    });
+    const result = await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
+
+    expect(result.thumbUrl).toBe(THUMB_WM_URL);
+    expect(result.mediumUrl).toBe(MEDIUM_WM_URL);
+    expect(result.originalUrl).toBe('https://r2.example.com/original');
+  });
+
+  it('returns CLEAN thumb+medium URLs when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
+    });
     const result = await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
 
     expect(result.thumbUrl).toBe(THUMB_URL);
     expect(result.mediumUrl).toBe(MEDIUM_URL);
     expect(result.originalUrl).toBe('https://r2.example.com/original');
+  });
+
+  it('returns CLEAN thumb+medium URLs when room.baseUnlockedAt is set (BASE_UNLOCK model)', async () => {
+    // Regression: dual-field unlock check — baseUnlockedAt also resolves to clean URLs.
+    const svc = makeService({
+      membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_EXEMPT) },
+      room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_BASE_UNLOCKED) },
+    });
+    const result = await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
+
+    expect(result.thumbUrl).toBe(THUMB_URL);
+    expect(result.mediumUrl).toBe(MEDIUM_URL);
+  });
+
+  it('falls back to clean URLs for legacy photos with null wm keys when room is locked', async () => {
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
+      photo: { findFirst: jest.fn().mockResolvedValue(LEGACY_PHOTO) },
+    });
+    const result = await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
+
+    expect(result.thumbUrl).toBe(THUMB_URL);
+    expect(result.mediumUrl).toBe(MEDIUM_URL);
   });
 
   it('throws 403 (GALLERY_LOCKED) when room has no unlock payment yet', async () => {
