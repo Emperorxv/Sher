@@ -44,17 +44,48 @@ export interface ProcessPhotoJobData {
 
 /**
  * Returns an SVG string (same dimensions as the target image) with a
- * semi-transparent "Sher" wordmark positioned at the bottom-right corner.
- * The SVG is rendered by Sharp's composite step; no external font needed.
+ * semi-transparent geometric "S" mark positioned in the bottom-right corner.
+ *
+ * The mark is built from five <rect> elements only — no <text>, no font-family,
+ * no font-size — so it renders identically in every environment regardless of
+ * what fonts (if any) are installed.  Sharp rasterises pure-vector SVG correctly
+ * without fontconfig or any system font.
+ *
+ * Layout (7-segment S, proportional to image short-edge):
+ *   ████████   ← top bar    (full mark width)
+ *   █          ← top-left vertical
+ *   ████████   ← middle bar (full mark width)
+ *            █ ← bottom-right vertical
+ *   ████████   ← bottom bar (full mark width)
  */
 function buildWatermarkSvg(width: number, height: number): string {
-  const fontSize = Math.round(Math.min(width, height) * 0.12);
-  const padding = Math.round(fontSize * 0.5);
+  const unit = Math.round(Math.min(width, height) * 0.035); // base unit
+  const barW = unit * 4; // horizontal bar width
+  const barH = unit; // bar thickness
+  const gapH = Math.round(unit * 0.8); // vertical gap between bars
+  const inset = Math.round(unit * 1.5); // distance from bottom-right corner
+  const markH = barH * 3 + gapH * 2;
+
+  // Top-left corner of the mark, positioned from bottom-right
+  const x = width - barW - inset;
+  const y = height - markH - inset;
+
+  const op = 0.18;
+  const rect = (rx: number, ry: number, rw: number, rh: number): string =>
+    `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="white" fill-opacity="${op}"/>`;
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
-    `<text x="${width - padding}" y="${height - padding}" ` +
-    `font-family="sans-serif" font-size="${fontSize}" font-weight="bold" ` +
-    `fill="white" fill-opacity="0.18" text-anchor="end">Sher</text>` +
+    // top bar
+    rect(x, y, barW, barH) +
+    // top-left vertical
+    rect(x, y + barH, barH, gapH) +
+    // middle bar
+    rect(x, y + barH + gapH, barW, barH) +
+    // bottom-right vertical
+    rect(x + barW - barH, y + barH * 2 + gapH, barH, gapH) +
+    // bottom bar
+    rect(x, y + barH * 2 + gapH * 2, barW, barH) +
     `</svg>`
   );
 }
