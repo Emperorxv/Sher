@@ -59,18 +59,6 @@ export function PhotoGallery({
   const router = useRouter();
   const [scope, setScope] = useState<'all' | 'mine'>('all');
   const { data, isLoading } = usePhotos(roomId, scope);
-  console.log(
-    'PhotoGallery DEBUG:',
-    JSON.stringify(
-      {
-        roomId,
-        meta: data?.meta,
-        items: data?.data?.map((p) => ({ id: p.id, thumbUrl: p.thumbUrl })),
-      },
-      null,
-      2,
-    ),
-  );
   const [reportPhotoId, setReportPhotoId] = useState<string | null>(null);
 
   // Paywall locked: hide toggle, return placeholder immediately.
