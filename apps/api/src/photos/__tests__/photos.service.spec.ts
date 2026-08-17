@@ -409,7 +409,19 @@ describe('PhotosService.getPhoto', () => {
     expect(result.originalUrl).toBe('https://r2.example.com/original');
   });
 
-  it('returns CLEAN thumb+medium URLs when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
+  it('returns downloadUrl=null for ACTIVE room (room not yet unlocked — download gated on payment)', async () => {
+    const svc = makeService({
+      room: { findUnique: jest.fn().mockResolvedValue(ACTIVE_ROOM) },
+    });
+    const result = await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
+
+    expect(result.downloadUrl).toBeNull();
+    // originalUrl is still present for in-screen viewing even when download is locked
+    expect(result.originalUrl).not.toBeNull();
+  });
+
+  it('returns CLEAN URLs and downloadUrl non-null when room.unlockedAt is set (ROOM_UNLOCK model)', async () => {
+    // Regression: dual-field check — unlockedAt triggers both clean URLs and downloadUrl.
     const svc = makeService({
       room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
     });
@@ -418,10 +430,11 @@ describe('PhotosService.getPhoto', () => {
     expect(result.thumbUrl).toBe(THUMB_URL);
     expect(result.mediumUrl).toBe(MEDIUM_URL);
     expect(result.originalUrl).toBe('https://r2.example.com/original');
+    expect(result.downloadUrl).toBe('https://r2.example.com/original');
   });
 
-  it('returns CLEAN thumb+medium URLs when room.baseUnlockedAt is set (BASE_UNLOCK model)', async () => {
-    // Regression: dual-field unlock check — baseUnlockedAt also resolves to clean URLs.
+  it('returns downloadUrl non-null when room.baseUnlockedAt is set (BASE_UNLOCK model)', async () => {
+    // Regression: dual-field check — baseUnlockedAt also unlocks download.
     const svc = makeService({
       membership: { findFirst: jest.fn().mockResolvedValue(MEMBERSHIP_EXEMPT) },
       room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_BASE_UNLOCKED) },
@@ -430,6 +443,29 @@ describe('PhotosService.getPhoto', () => {
 
     expect(result.thumbUrl).toBe(THUMB_URL);
     expect(result.mediumUrl).toBe(MEDIUM_URL);
+    expect(result.downloadUrl).toBe('https://r2.example.com/original');
+  });
+
+  it('downloadUrl points at the original storageKey (never a watermarked key)', async () => {
+    const storage = makeStorage();
+    const svc = new PhotosService(
+      makePrisma({
+        room: { findUnique: jest.fn().mockResolvedValue(ENDED_ROOM_ROOM_UNLOCKED) },
+      }) as never,
+      storage as never,
+      makeQueue() as never,
+      makeGateway() as never,
+    );
+    await svc.getPhoto(ROOM_ID, PHOTO_ID, USER_ID);
+
+    // Every createSignedGetUrl call for download must target the originals/ key
+    const calls: string[] = (storage.createSignedGetUrl.mock.calls as [string][]).map(([k]) => k);
+    const downloadCall = calls.find((k) => k.startsWith('originals/'));
+    expect(downloadCall).toBeDefined();
+    // No wm key should be used for download
+    expect(calls.every((k) => !k.startsWith('thumbs-wm/') && !k.startsWith('medium-wm/'))).toBe(
+      true,
+    );
   });
 
   it('falls back to clean URLs for legacy photos with null wm keys when room is locked', async () => {

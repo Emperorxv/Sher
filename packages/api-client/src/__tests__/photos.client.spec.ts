@@ -99,6 +99,7 @@ const MOCK_PHOTO: PhotoDto = {
 const MOCK_PHOTO_DETAIL: PhotoDetailDto = {
   ...MOCK_PHOTO,
   originalUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg?sig=orig',
+  downloadUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg?sig=dl',
 };
 
 const MOCK_PHOTO_LIST: PhotoListResponseDto = {

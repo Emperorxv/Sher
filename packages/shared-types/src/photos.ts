@@ -38,7 +38,11 @@ export interface PhotoDto {
 
 /** Extended photo returned by GET /v1/rooms/:id/photos/:photoId */
 export interface PhotoDetailDto extends PhotoDto {
-  originalUrl: string | null; // signed GET URL for the original file
+  originalUrl: string | null; // signed GET URL for the original file (always set when getPhoto succeeds)
+  /** Presigned GET URL for the original (never watermarked) file, 5-min TTL.
+   *  null until the room is unlocked (room.unlockedAt or room.baseUnlockedAt is set).
+   *  ACTIVE rooms and ENDED+locked rooms both return null — download is gated on payment. */
+  downloadUrl: string | null;
 }
 
 /** Pagination metadata in GET /v1/rooms/:id/photos */

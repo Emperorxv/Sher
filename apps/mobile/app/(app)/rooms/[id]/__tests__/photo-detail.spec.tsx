@@ -10,12 +10,21 @@
  *   - Error state (network / TypeError) → mapped message.
  *   - Tapping "Back to room" calls router.back().
  *   - Tapping "Close photo" calls router.back().
+ *   - Download button absent when downloadUrl is null (room locked/active).
+ *   - Download button present when downloadUrl is set (room unlocked).
+ *   - Tapping download → permission granted → saves to library.
+ *   - Tapping download → permission denied → shows Alert, no crash.
+ *   - Download failure (saveToLibraryAsync throws) → shows error Alert, no crash.
  */
 
 // ── Hoisted mock vars ──────────────────────────────────────────────────────────
 
 const mockBack = jest.fn();
 const mockUsePhoto = jest.fn();
+const mockRequestPermissionsAsync = jest.fn();
+const mockSaveToLibraryAsync = jest.fn();
+const mockDownloadAsync = jest.fn();
+const mockAlert = jest.fn();
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
 
@@ -34,16 +43,28 @@ jest.mock('../../../../../lib/photos', () => ({
   },
 }));
 
+jest.mock('expo-media-library', () => ({
+  requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissionsAsync(...args),
+  saveToLibraryAsync: (...args: unknown[]) => mockSaveToLibraryAsync(...args),
+}));
+
+jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: 'file:///tmp/',
+  downloadAsync: (...args: unknown[]) => mockDownloadAsync(...args),
+}));
+
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ApiError } from '@sher/api-client';
 import type { PhotoDetailDto } from '@sher/shared-types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const PHOTO: PhotoDetailDto = {
+/** Photo from an unlocked room — downloadUrl is set */
+const PHOTO_UNLOCKED: PhotoDetailDto = {
   id: 'photo-1',
   roomId: 'room-1',
   uploaderId: 'user-1',
@@ -55,7 +76,14 @@ const PHOTO: PhotoDetailDto = {
   thumbUrl: 'https://r2.example.com/thumb/photo-1.jpg',
   mediumUrl: 'https://r2.example.com/medium/photo-1.jpg',
   originalUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg',
+  downloadUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg',
   createdAt: '2026-06-21T14:30:00Z',
+};
+
+/** Same photo but from a locked/active room — downloadUrl is null */
+const PHOTO_LOCKED: PhotoDetailDto = {
+  ...PHOTO_UNLOCKED,
+  downloadUrl: null,
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -70,8 +98,19 @@ function renderScreen() {
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
+let alertSpy: jest.SpyInstance;
+
 beforeEach(() => {
   jest.clearAllMocks();
+  alertSpy = jest
+    .spyOn(Alert, 'alert')
+    .mockImplementation((...args: unknown[]) => mockAlert(...args));
+  mockDownloadAsync.mockResolvedValue({ uri: 'file:///tmp/sher-photo-1.jpg', status: 200 });
+  mockSaveToLibraryAsync.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  alertSpy.mockRestore();
 });
 
 describe('loading state', () => {
@@ -84,13 +123,13 @@ describe('loading state', () => {
 
 describe('success state', () => {
   beforeEach(() => {
-    mockUsePhoto.mockReturnValue({ data: PHOTO, isLoading: false, error: null });
+    mockUsePhoto.mockReturnValue({ data: PHOTO_UNLOCKED, isLoading: false, error: null });
   });
 
   it('renders the full-resolution image with the originalUrl', () => {
     const { getByTestId } = renderScreen();
     const img = getByTestId('photo-detail-image');
-    expect(img.props.source.uri).toBe(PHOTO.originalUrl);
+    expect(img.props.source.uri).toBe(PHOTO_UNLOCKED.originalUrl);
   });
 
   it('shows the filter name when present', () => {
@@ -113,7 +152,7 @@ describe('success state', () => {
 describe('success state — no optional metadata', () => {
   it('omits filter and takenAt elements when both are null', () => {
     mockUsePhoto.mockReturnValue({
-      data: { ...PHOTO, filter: null, takenAt: null },
+      data: { ...PHOTO_UNLOCKED, filter: null, takenAt: null },
       isLoading: false,
       error: null,
     });
@@ -184,5 +223,107 @@ describe('error state', () => {
     const { getByLabelText } = renderScreen();
     fireEvent.press(getByLabelText('Back to room'));
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Download button visibility ────────────────────────────────────────────────
+
+describe('download button — visibility', () => {
+  it('is absent when downloadUrl is null (room locked or active)', () => {
+    mockUsePhoto.mockReturnValue({ data: PHOTO_LOCKED, isLoading: false, error: null });
+    const { queryByTestId } = renderScreen();
+    expect(queryByTestId('photo-download-button')).toBeNull();
+  });
+
+  it('is present when downloadUrl is set (room unlocked)', () => {
+    mockUsePhoto.mockReturnValue({ data: PHOTO_UNLOCKED, isLoading: false, error: null });
+    const { getByTestId } = renderScreen();
+    expect(getByTestId('photo-download-button')).toBeTruthy();
+  });
+});
+
+// ── Download button — permission granted ──────────────────────────────────────
+
+describe('download button — permission granted', () => {
+  beforeEach(() => {
+    mockUsePhoto.mockReturnValue({ data: PHOTO_UNLOCKED, isLoading: false, error: null });
+    mockRequestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+  });
+
+  it('calls FileSystem.downloadAsync then MediaLibrary.saveToLibraryAsync', async () => {
+    const { getByTestId } = renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-download-button'));
+    });
+    await waitFor(() => expect(mockSaveToLibraryAsync).toHaveBeenCalledTimes(1));
+
+    expect(mockDownloadAsync).toHaveBeenCalledWith(
+      PHOTO_UNLOCKED.downloadUrl,
+      expect.stringContaining('sher-photo-1.jpg'),
+    );
+    expect(mockSaveToLibraryAsync).toHaveBeenCalledWith(
+      expect.stringContaining('sher-photo-1.jpg'),
+    );
+  });
+
+  it('shows a success Alert after saving', async () => {
+    const { getByTestId } = renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-download-button'));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+    expect(mockAlert).toHaveBeenCalledWith('Saved', 'Photo saved to your library.');
+  });
+});
+
+// ── Download button — permission denied ───────────────────────────────────────
+
+describe('download button — permission denied', () => {
+  beforeEach(() => {
+    mockUsePhoto.mockReturnValue({ data: PHOTO_UNLOCKED, isLoading: false, error: null });
+    mockRequestPermissionsAsync.mockResolvedValue({ status: 'denied' });
+  });
+
+  it('shows a permission Alert and does not call saveToLibraryAsync', async () => {
+    const { getByTestId } = renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-download-button'));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+
+    expect(mockAlert).toHaveBeenCalledWith(
+      'Permission needed',
+      'Allow photo library access in Settings to save photos.',
+    );
+    expect(mockSaveToLibraryAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not crash when permission is denied', async () => {
+    const { getByTestId } = renderScreen();
+    await expect(
+      act(async () => {
+        fireEvent.press(getByTestId('photo-download-button'));
+      }),
+    ).resolves.not.toThrow();
+  });
+});
+
+// ── Download button — save failure ────────────────────────────────────────────
+
+describe('download button — save failure', () => {
+  beforeEach(() => {
+    mockUsePhoto.mockReturnValue({ data: PHOTO_UNLOCKED, isLoading: false, error: null });
+    mockRequestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+  });
+
+  it('shows an error Alert when saveToLibraryAsync throws, and does not crash', async () => {
+    mockSaveToLibraryAsync.mockRejectedValue(new Error('disk full'));
+    const { getByTestId } = renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-download-button'));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+
+    expect(mockAlert).toHaveBeenCalledWith('Error', 'Could not save the photo. Try again.');
   });
 });

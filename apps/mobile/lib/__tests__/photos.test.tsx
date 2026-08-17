@@ -69,6 +69,7 @@ const LOCKED_RESPONSE: PhotoListResponseDto = {
 const DETAIL_RESPONSE: PhotoDetailDto = {
   ...PHOTO_ITEM,
   originalUrl: 'https://r2.example.com/originals/room-1/photo-1.jpg',
+  downloadUrl: null,
 };
 
 // ── photoKeys ─────────────────────────────────────────────────────────────────

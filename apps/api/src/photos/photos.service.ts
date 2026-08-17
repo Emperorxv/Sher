@@ -193,7 +193,13 @@ export class PhotosService {
       SIGNED_URL_TTL_SECONDS,
     );
 
-    return { ...(await this.toPhotoDto(photo, isUnlocked)), originalUrl };
+    // downloadUrl is gated on room unlock: ACTIVE rooms and ENDED+locked return null.
+    // originalUrl is always signed (used for in-screen viewing regardless of lock state).
+    const downloadUrl = isUnlocked
+      ? await this.storage.createSignedGetUrl(photo.storageKey, SIGNED_URL_TTL_SECONDS)
+      : null;
+
+    return { ...(await this.toPhotoDto(photo, isUnlocked)), originalUrl, downloadUrl };
   }
 
   // ── Delete photo ─────────────────────────────────────────────────────────────
