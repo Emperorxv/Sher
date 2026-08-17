@@ -70,7 +70,7 @@ function buildWatermarkSvg(width: number, height: number): string {
   const x = width - barW - inset;
   const y = height - markH - inset;
 
-  const op = 0.18;
+  const op = 0.4;
   const rect = (rx: number, ry: number, rw: number, rh: number): string =>
     `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="white" fill-opacity="${op}"/>`;
 
