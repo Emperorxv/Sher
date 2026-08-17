@@ -147,6 +147,10 @@ export class RoomsGateway
     this.server.to(`room:${roomId}`).emit('room:retention_extended', { roomId, retentionUntil });
   }
 
+  emitRetentionChargeFailed(roomId: string) {
+    this.server.to(`room:${roomId}`).emit('room:retention_charge_failed', { roomId });
+  }
+
   emitPaymentFailed(roomId: string, purpose: string) {
     this.server.to(`room:${roomId}`).emit('payment:failed', { roomId, purpose });
   }

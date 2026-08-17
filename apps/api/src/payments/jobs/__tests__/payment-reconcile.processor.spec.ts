@@ -122,6 +122,7 @@ function makePaymentsService(
     paystack as never,
     null, // FlutterwaveClient
     gateway as never,
+    { enqueueRenewal: jest.fn() } as never, // RetentionRenewProcessor — not called by applyVerify*
   );
 }
 

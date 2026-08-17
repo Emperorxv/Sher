@@ -229,6 +229,7 @@ describe('WebhooksController (http)', () => {
         'sher_test123',
         150_000,
         'NGN',
+        undefined, // no reusable authorization in this payload
       );
     });
 

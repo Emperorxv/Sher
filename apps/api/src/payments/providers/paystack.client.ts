@@ -40,6 +40,23 @@ export interface PaystackVerifyResponse {
   data: PaystackVerifyData;
 }
 
+export interface PaystackChargeAuthInput {
+  email: string;
+  authorizationCode: string;
+  amountMinor: number;
+  currency: string;
+  reference: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PaystackChargeAuthResult {
+  /** 'success' | 'failed' — abandoned/reversed treated as failed */
+  status: 'success' | 'failed';
+  reference: string;
+  amountMinor: number;
+  currency: string;
+}
+
 // ── Client ────────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -108,6 +125,73 @@ export class PaystackClient implements PaymentProvider {
     return {
       authorizationUrl: json.data.authorization_url,
       providerRef: json.data.reference,
+    };
+  }
+
+  // ── chargeAuthorization ───────────────────────────────────────────────────
+  // Rule 5: throws ServiceUnavailableException when key is absent (lazy check).
+  async chargeAuthorization(input: PaystackChargeAuthInput): Promise<PaystackChargeAuthResult> {
+    if (!this.secretKey)
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'PAYSTACK_SECRET_KEY is not set.',
+      });
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/transaction/charge_authorization`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: input.email,
+          amount: input.amountMinor,
+          currency: input.currency,
+          authorization_code: input.authorizationCode,
+          reference: input.reference,
+          metadata: input.metadata,
+        }),
+      });
+    } catch (err) {
+      this.logger.error({ err }, 'Paystack chargeAuthorization network error');
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'Paystack is unreachable.',
+      });
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      this.logger.error(`Paystack chargeAuthorization HTTP ${res.status}: ${body}`);
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'Paystack returned an error response.',
+      });
+    }
+
+    const json = (await res.json()) as {
+      status: boolean;
+      message: string;
+      data: PaystackVerifyData;
+    };
+
+    if (!json.status || !json.data) {
+      this.logger.error(`Paystack chargeAuthorization unexpected body: ${JSON.stringify(json)}`);
+      throw new ServiceUnavailableException({
+        code: 'PAYSTACK_UNAVAILABLE',
+        message: 'Paystack returned an unexpected response.',
+      });
+    }
+
+    const txStatus: 'success' | 'failed' = json.data.status === 'success' ? 'success' : 'failed';
+
+    return {
+      status: txStatus,
+      reference: json.data.reference,
+      amountMinor: json.data.amount,
+      currency: json.data.currency,
     };
   }
 

@@ -11,6 +11,7 @@ import { PaystackClient } from './providers/paystack.client';
 import { FlutterwaveClient } from './providers/flutterwave.client';
 import { FLUTTERWAVE_PROVIDER, PAYSTACK_PROVIDER } from './providers/payment-provider.interface';
 import { PaymentReconcileProcessor } from './jobs/payment-reconcile.processor';
+import { RetentionRenewProcessor } from './jobs/retention-renew.processor';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PaymentReconcileProcessor } from './jobs/payment-reconcile.processor';
     FlutterwaveClient,
     { provide: FLUTTERWAVE_PROVIDER, useExisting: FlutterwaveClient },
     PaymentReconcileProcessor,
+    RetentionRenewProcessor,
   ],
   exports: [PaymentsService],
 })

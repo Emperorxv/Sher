@@ -101,6 +101,7 @@ describeIfDb('PaymentsService — real-DB integration', () => {
       mockPaystack as never,
       null, // FlutterwaveClient — not used in these paths
       mockGateway as unknown as RoomsGateway,
+      { enqueueRenewal: jest.fn() } as never, // RetentionRenewProcessor — not called in these paths
     );
 
     // ── Create users ────────────────────────────────────────────────────────

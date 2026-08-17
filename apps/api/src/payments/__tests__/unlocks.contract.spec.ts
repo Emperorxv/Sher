@@ -32,6 +32,7 @@ import {
   PaymentInitResult,
 } from '../providers/payment-provider.interface';
 import { RoomsGateway } from '../../rooms/rooms.gateway';
+import { RetentionRenewProcessor } from '../jobs/retention-renew.processor';
 
 // ── Test RSA key pair ─────────────────────────────────────────────────────────
 
@@ -207,8 +208,13 @@ describe('UnlocksController (contract)', () => {
             emitBaseUnlocked: jest.fn(),
             emitMemberUnlocked: jest.fn(),
             emitRetentionExtended: jest.fn(),
+            emitRetentionChargeFailed: jest.fn(),
             emitPaymentFailed: jest.fn(),
           },
+        },
+        {
+          provide: RetentionRenewProcessor,
+          useValue: { enqueueRenewal: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
@@ -644,7 +650,10 @@ describe('UnlocksController (contract)', () => {
   // ── POST /v1/rooms/:id/retention/extend ────────────────────────────────────
 
   describe('POST /v1/rooms/:id/retention/extend', () => {
-    it('201 — UNLOCKED member extends 2 months — exact PaymentInitDto shape', async () => {
+    // months is no longer a user-facing field; always 1 month per charge.
+    // Flutterwave does not support recurring (one-shot only).
+
+    it('201 — UNLOCKED member extends 1 month — exact PaymentInitDto shape', async () => {
       mockPrisma.membership.findFirst.mockResolvedValue(EXTRA_MEMBERSHIP_UNLOCKED);
       mockPrisma.user.findUnique.mockResolvedValue(GUEST_USER);
       mockPrisma.payment.create.mockResolvedValue(MOCK_RETENTION_PAYMENT);
@@ -652,21 +661,34 @@ describe('UnlocksController (contract)', () => {
       const res = await request(app.getHttpServer())
         .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
         .set('Authorization', `Bearer ${guestToken}`)
-        .send({ months: 2 });
+        .send({});
 
       expect(res.status).toBe(HttpStatus.CREATED);
       const { data } = res.body as { data: Record<string, unknown> };
 
-      // NGN retention month = 100,000 kobo × 2 = 200,000 kobo
+      // NGN retention month = 100,000 kobo × 1 = 100,000 kobo
       expect(data).toMatchObject({
         paymentId: 'payment-retention-1',
         authorizationUrl: 'https://checkout.paystack.com/test-url',
         providerRef: 'sher_test_ref_001',
-        amountMinor: 200_000,
+        amountMinor: 100_000,
         currency: 'NGN',
-        amountDisplay: '₦2,000.00',
+        amountDisplay: '₦1,000.00',
         provider: 'PAYSTACK',
       });
+    });
+
+    it('201 — extra fields like months are silently stripped by Zod', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue(EXTRA_MEMBERSHIP_UNLOCKED);
+      mockPrisma.user.findUnique.mockResolvedValue(GUEST_USER);
+      mockPrisma.payment.create.mockResolvedValue(MOCK_RETENTION_PAYMENT);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
+        .set('Authorization', `Bearer ${guestToken}`)
+        .send({ months: 5 }); // stripped — still 1 month
+
+      expect(res.status).toBe(HttpStatus.CREATED);
     });
 
     it('403 — LOCKED member cannot extend retention → ACCESS_LOCKED', async () => {
@@ -675,38 +697,85 @@ describe('UnlocksController (contract)', () => {
       const res = await request(app.getHttpServer())
         .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
         .set('Authorization', `Bearer ${guestToken}`)
-        .send({ months: 1 });
+        .send({});
 
       expect(res.status).toBe(HttpStatus.FORBIDDEN);
       const { error } = res.body as { error: { code: string } };
       expect(error.code).toBe('ACCESS_LOCKED');
     });
 
-    it('400 — months=0 is rejected by Zod (min 1)', async () => {
+    it('400 — invalid provider value is rejected by Zod', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue(EXTRA_MEMBERSHIP_UNLOCKED);
+
       const res = await request(app.getHttpServer())
         .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
         .set('Authorization', `Bearer ${guestToken}`)
-        .send({ months: 0 });
+        .send({ provider: 'BITCOIN' });
 
       expect(res.status).toBe(HttpStatus.BAD_REQUEST);
     });
+  });
 
-    it('400 — months=13 is rejected by Zod (max 12)', async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
-        .set('Authorization', `Bearer ${guestToken}`)
-        .send({ months: 13 });
+  // ── DELETE /v1/rooms/:id/retention/subscription ───────────────────────────
 
-      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+  describe('DELETE /v1/rooms/:id/retention/subscription', () => {
+    const ACTIVE_SUB = {
+      id: 'sub-1',
+      roomId: ENDED_ROOM.id,
+      userId: GUEST_USER.id,
+      status: 'ACTIVE',
+    };
+
+    beforeEach(() => {
+      // Add retentionSubscription mock (not in makeMockPrisma default)
+      (mockPrisma as unknown as Record<string, unknown>)['retentionSubscription'] = {
+        findFirst: jest.fn().mockResolvedValue(ACTIVE_SUB),
+        update: jest.fn().mockResolvedValue({}),
+      };
     });
 
-    it('400 — months missing → rejected', async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/v1/rooms/${ENDED_ROOM.id}/retention/extend`)
-        .set('Authorization', `Bearer ${guestToken}`)
-        .send({});
+    it('204 — payer cancels own subscription', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue(EXTRA_MEMBERSHIP_UNLOCKED);
 
-      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${ENDED_ROOM.id}/retention/subscription`)
+        .set('Authorization', `Bearer ${guestToken}`);
+
+      expect(res.status).toBe(HttpStatus.NO_CONTENT);
+    });
+
+    it('401 — no token', async () => {
+      const res = await request(app.getHttpServer()).delete(
+        `/v1/rooms/${ENDED_ROOM.id}/retention/subscription`,
+      );
+      expect(res.status).toBe(HttpStatus.UNAUTHORIZED);
+    });
+
+    it('404 — NO_ACTIVE_SUBSCRIPTION when no subscription', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockPrisma as any).retentionSubscription.findFirst.mockResolvedValue(null);
+      mockPrisma.membership.findFirst.mockResolvedValue(HOST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${ENDED_ROOM.id}/retention/subscription`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.NOT_FOUND);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('NO_ACTIVE_SUBSCRIPTION');
+    });
+
+    it('403 — NOT_PAYER when caller is not the subscription owner', async () => {
+      // Sub belongs to GUEST_USER, but HOST_USER calls cancel
+      mockPrisma.membership.findFirst.mockResolvedValue(HOST_MEMBERSHIP);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/v1/rooms/${ENDED_ROOM.id}/retention/subscription`)
+        .set('Authorization', `Bearer ${hostToken}`);
+
+      expect(res.status).toBe(HttpStatus.FORBIDDEN);
+      const { error } = res.body as { error: { code: string } };
+      expect(error.code).toBe('NOT_PAYER');
     });
   });
 });

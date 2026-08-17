@@ -23,6 +23,7 @@ import {
 import { PaymentsService } from '../payments.service';
 import { PaymentProvider } from '../providers/payment-provider.interface';
 import { RoomsGateway } from '../../rooms/rooms.gateway';
+import { RetentionRenewProcessor } from '../jobs/retention-renew.processor';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,7 @@ function makePrisma(
     paymentCreate: unknown;
     paymentFindMany: unknown;
     paymentFindFirst: unknown;
+    retentionSubscriptionFindFirst: unknown;
   }> = {},
 ) {
   const p = {
@@ -157,6 +159,17 @@ function makePrisma(
     retentionWindow: {
       create: jest.fn().mockResolvedValue({}),
     },
+    retentionSubscription: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          'retentionSubscriptionFindFirst' in overrides
+            ? overrides.retentionSubscriptionFindFirst
+            : null,
+        ),
+      create: jest.fn().mockResolvedValue({ id: 'sub-1' }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     // $transaction calls fn with the mock itself as the tx client.
     $transaction: jest.fn(),
   };
@@ -167,15 +180,24 @@ function makePrisma(
 function makeGateway(): jest.Mocked<
   Pick<
     RoomsGateway,
-    'emitBaseUnlocked' | 'emitMemberUnlocked' | 'emitRetentionExtended' | 'emitPaymentFailed'
+    | 'emitBaseUnlocked'
+    | 'emitMemberUnlocked'
+    | 'emitRetentionExtended'
+    | 'emitRetentionChargeFailed'
+    | 'emitPaymentFailed'
   >
 > {
   return {
     emitBaseUnlocked: jest.fn(),
     emitMemberUnlocked: jest.fn(),
     emitRetentionExtended: jest.fn(),
+    emitRetentionChargeFailed: jest.fn(),
     emitPaymentFailed: jest.fn(),
   };
+}
+
+function makeRetentionRenew(): jest.Mocked<Pick<RetentionRenewProcessor, 'enqueueRenewal'>> {
+  return { enqueueRenewal: jest.fn().mockResolvedValue(undefined) };
 }
 
 function makePricing() {
@@ -207,19 +229,22 @@ function makeService(
   pricing: ReturnType<typeof makePricing>;
   provider: jest.Mocked<PaymentProvider>;
   gateway: ReturnType<typeof makeGateway>;
+  retentionRenew: ReturnType<typeof makeRetentionRenew>;
 } {
   const prisma = makePrisma(prismaOverrides);
   const pricing = makePricing();
   const provider = { ...makeProvider(), ...providerOverrides };
   const gateway = makeGateway();
+  const retentionRenew = makeRetentionRenew();
   const service = new PaymentsService(
     prisma as never,
     pricing as never,
     provider as never,
     null, // FlutterwaveClient
     gateway as never,
+    retentionRenew as never,
   );
-  return { service, prisma, pricing, provider, gateway };
+  return { service, prisma, pricing, provider, gateway, retentionRenew };
 }
 
 // ── initiateBaseUnlock ────────────────────────────────────────────────────────
@@ -488,7 +513,7 @@ describe('initiateMemberUnlock()', () => {
 // ── initiateRetentionExtension ────────────────────────────────────────────────
 
 describe('initiateRetentionExtension()', () => {
-  const INPUT = { provider: 'PAYSTACK' as const, months: 3 };
+  const INPUT = { provider: 'PAYSTACK' as const };
 
   it('throws ROOM_STILL_ACTIVE when room is not ENDED', async () => {
     const { service } = makeService({ roomFindUnique: ACTIVE_ROOM });
@@ -532,6 +557,43 @@ describe('initiateRetentionExtension()', () => {
         }),
       }),
     );
+  });
+
+  it('always passes months=1 to pricing regardless of any caller input', async () => {
+    const { service, pricing } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_UNLOCKED,
+      userFindUnique: GUEST_USER,
+    });
+    await service.initiateRetentionExtension(ROOM_ID, GUEST_ID, INPUT);
+
+    expect(pricing.quote).toHaveBeenCalledWith(expect.objectContaining({ retentionMonths: 1 }));
+  });
+
+  it('sets willAutoRenew=true in metadata for PAYSTACK', async () => {
+    const { service, prisma } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_UNLOCKED,
+      userFindUnique: GUEST_USER,
+    });
+    await service.initiateRetentionExtension(ROOM_ID, GUEST_ID, { provider: 'PAYSTACK' });
+
+    const createCall = (prisma.payment.create as jest.Mock).mock.calls[0][0] as {
+      data: { metadata: Record<string, unknown> };
+    };
+    expect(createCall.data.metadata).toMatchObject({ willAutoRenew: true });
+  });
+
+  it('throws FLUTTERWAVE_UNAVAILABLE when FLUTTERWAVE is requested but not wired', async () => {
+    const { service } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_UNLOCKED,
+      userFindUnique: GUEST_USER,
+    });
+    const err = await service
+      .initiateRetentionExtension(ROOM_ID, GUEST_ID, { provider: 'FLUTTERWAVE' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect((err as ServiceUnavailableException).getResponse()).toMatchObject({
+      code: 'FLUTTERWAVE_UNAVAILABLE',
+    });
   });
 });
 
@@ -624,7 +686,7 @@ describe('handleWebhookSuccess()', () => {
     id: 'payment-3',
     purpose: 'RETENTION_EXTENSION',
     membershipId: null,
-    metadata: { months: 3, purpose: 'RETENTION_EXTENSION' },
+    metadata: { months: 1, purpose: 'RETENTION_EXTENSION' },
   };
 
   describe('BASE_UNLOCK', () => {
@@ -767,6 +829,40 @@ describe('handleWebhookSuccess()', () => {
       );
       expect(gateway.emitRetentionExtended).toHaveBeenCalledWith(ROOM_ID, expect.any(String));
     });
+
+    it('creates RetentionSubscription and enqueues renewal when reusable Paystack auth provided', async () => {
+      const { service, prisma, retentionRenew } = makeService({
+        paymentFindFirst: PENDING_RETENTION_PAYMENT,
+      });
+      const paystackAuth = { code: 'AUTH_abc123', email: 'host@sher.dev' };
+
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN', paystackAuth);
+
+      expect(prisma.retentionSubscription.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            roomId: ROOM_ID,
+            userId: HOST_ID,
+            authorizationCode: 'AUTH_abc123',
+            email: 'host@sher.dev',
+            status: 'ACTIVE',
+            nextChargeAt: expect.any(Date),
+          }),
+        }),
+      );
+      expect(retentionRenew.enqueueRenewal).toHaveBeenCalledWith('sub-1');
+    });
+
+    it('does not create RetentionSubscription when paystackAuth is absent (Flutterwave one-shot)', async () => {
+      const { service, prisma, retentionRenew } = makeService({
+        paymentFindFirst: PENDING_RETENTION_PAYMENT,
+      });
+
+      await service.handleWebhookSuccess('sher_fake-ref', 150_000, 'NGN');
+
+      expect(prisma.retentionSubscription.create).not.toHaveBeenCalled();
+      expect(retentionRenew.enqueueRenewal).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -842,5 +938,96 @@ describe('getPaymentHistory()', () => {
     const { service } = makeService({ paymentFindMany: [MOCK_PAYMENT] });
     const [item] = await service.getPaymentHistory(HOST_ID);
     expect(item!.paidAt).toBeNull();
+  });
+});
+
+// ── cancelRetentionSubscription ───────────────────────────────────────────────
+
+describe('cancelRetentionSubscription()', () => {
+  const ACTIVE_SUB_BY_HOST = {
+    id: 'sub-host-1',
+    roomId: ROOM_ID,
+    userId: HOST_ID,
+    status: 'ACTIVE',
+    authorizationCode: 'AUTH_abc',
+    email: 'host@sher.dev',
+    currency: 'NGN',
+    amountMinor: 150_000,
+    nextChargeAt: new Date('2026-10-01'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const ACTIVE_SUB_BY_GUEST = { ...ACTIVE_SUB_BY_HOST, id: 'sub-guest-1', userId: GUEST_ID };
+
+  it('throws ROOM_NOT_FOUND when room does not exist', async () => {
+    const { service } = makeService({ roomFindUnique: null });
+    await expect(service.cancelRetentionSubscription(ROOM_ID, HOST_ID)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('throws NOT_MEMBER when caller has no active membership', async () => {
+    const { service } = makeService({ membershipFindFirst: null });
+    const err = await service
+      .cancelRetentionSubscription(ROOM_ID, HOST_ID)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect((err as NotFoundException).getResponse()).toMatchObject({ code: 'NOT_MEMBER' });
+  });
+
+  it('throws NO_ACTIVE_SUBSCRIPTION when no ACTIVE subscription exists for the room', async () => {
+    const { service } = makeService({
+      membershipFindFirst: HOST_MEMBERSHIP,
+      retentionSubscriptionFindFirst: null,
+    });
+    const err = await service
+      .cancelRetentionSubscription(ROOM_ID, HOST_ID)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect((err as NotFoundException).getResponse()).toMatchObject({
+      code: 'NO_ACTIVE_SUBSCRIPTION',
+    });
+  });
+
+  it('throws NOT_PAYER when caller is not the subscription owner', async () => {
+    // GUEST_ID calls cancel but ACTIVE_SUB_BY_HOST.userId === HOST_ID
+    const { service } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_LOCKED, // GUEST_ID membership
+      retentionSubscriptionFindFirst: ACTIVE_SUB_BY_HOST,
+    });
+    const err = await service
+      .cancelRetentionSubscription(ROOM_ID, GUEST_ID)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({ code: 'NOT_PAYER' });
+  });
+
+  it('updates subscription status to CANCELLED when called by the payer', async () => {
+    const { service, prisma } = makeService({
+      membershipFindFirst: HOST_MEMBERSHIP,
+      retentionSubscriptionFindFirst: ACTIVE_SUB_BY_HOST,
+    });
+
+    await service.cancelRetentionSubscription(ROOM_ID, HOST_ID);
+
+    expect(prisma.retentionSubscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-host-1' },
+      data: { status: 'CANCELLED' },
+    });
+  });
+
+  it('allows the guest who set up the subscription to cancel it', async () => {
+    const { service, prisma } = makeService({
+      membershipFindFirst: EXTRA_MEMBERSHIP_LOCKED, // GUEST_ID
+      retentionSubscriptionFindFirst: ACTIVE_SUB_BY_GUEST,
+    });
+
+    await service.cancelRetentionSubscription(ROOM_ID, GUEST_ID);
+
+    expect(prisma.retentionSubscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-guest-1' },
+      data: { status: 'CANCELLED' },
+    });
   });
 });

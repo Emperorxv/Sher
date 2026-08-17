@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   UseGuards,
+  Delete,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.types';
@@ -74,5 +75,15 @@ export class UnlocksController {
     @Body(createZodPipe(RetentionExtendSchema)) dto: RetentionExtendInput,
   ) {
     return this.payments.initiateRetentionExtension(id, user.id, dto);
+  }
+
+  // ── DELETE /v1/rooms/:id/retention/subscription ────────────────────────────
+  // Cancels future recurring charges. Authorization: payer-only.
+  // The already-paid retentionUntil is NOT shortened.
+
+  @Delete(':id/retention/subscription')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  cancelRetentionSubscription(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.payments.cancelRetentionSubscription(id, user.id);
   }
 }

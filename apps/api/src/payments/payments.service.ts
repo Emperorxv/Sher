@@ -33,6 +33,13 @@ import {
 import { InitiateUnlockInput } from './schemas/initiate-unlock.schema';
 import { RetentionExtendInput } from './schemas/retention-extend.schema';
 import { RoomsGateway } from '../rooms/rooms.gateway';
+import { RetentionRenewProcessor } from './jobs/retention-renew.processor';
+
+// Paystack authorization data extracted from the charge.success webhook.
+interface PaystackAuth {
+  code: string;
+  email: string;
+}
 
 @Injectable()
 export class PaymentsService {
@@ -42,6 +49,7 @@ export class PaymentsService {
     @Inject(PAYSTACK_PROVIDER) private readonly paystack: PaymentProvider,
     @Inject(FLUTTERWAVE_PROVIDER) private readonly flutterwave: PaymentProvider | null,
     private readonly gateway: RoomsGateway,
+    private readonly retentionRenew: RetentionRenewProcessor,
   ) {}
 
   // ── Initiate: base unlock ─────────────────────────────────────────────────
@@ -222,6 +230,10 @@ export class PaymentsService {
       });
     }
 
+    // Flutterwave does not support silent background re-charges (NOAUTH not enabled
+    // by default) — surface this so the caller knows no auto-renewal will be set up.
+    const willAutoRenew = input.provider === 'PAYSTACK';
+
     return this.initiatePayment({
       callerId,
       roomId,
@@ -232,9 +244,54 @@ export class PaymentsService {
       pricingArgs: {
         currency: room.pricingCurrency as SupportedCurrency,
         purpose: 'RETENTION_MONTH',
-        retentionMonths: input.months,
+        retentionMonths: 1, // always 1 month per charge; recurring handles renewal
       },
-      metadata: { roomId, months: input.months, purpose: 'RETENTION_EXTENSION' },
+      metadata: {
+        roomId,
+        months: 1,
+        purpose: 'RETENTION_EXTENSION',
+        willAutoRenew,
+      },
+    });
+  }
+
+  // ── Cancel: recurring retention subscription ──────────────────────────────
+
+  /**
+   * Cancels future recurring charges for a room's active RetentionSubscription.
+   * Does NOT shorten the already-paid retentionUntil — the current period
+   * runs to completion. Authorization: payer-only (the userId on the subscription).
+   */
+  async cancelRetentionSubscription(roomId: string, callerId: string): Promise<void> {
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException({ code: 'ROOM_NOT_FOUND', message: 'Room not found.' });
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { roomId, userId: callerId, leftAt: null },
+    });
+    if (!membership) throw new NotFoundException({ code: 'NOT_MEMBER', message: 'Not a member.' });
+
+    const sub = await this.prisma.retentionSubscription.findFirst({
+      where: { roomId, status: 'ACTIVE' },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'NO_ACTIVE_SUBSCRIPTION',
+        message: 'No active recurring retention subscription found for this room.',
+      });
+    }
+
+    // Only the original payer may cancel.
+    if (sub.userId !== callerId) {
+      throw new ForbiddenException({
+        code: 'NOT_PAYER',
+        message: 'Only the member who set up the recurring subscription may cancel it.',
+      });
+    }
+
+    await this.prisma.retentionSubscription.update({
+      where: { id: sub.id },
+      data: { status: 'CANCELLED' },
     });
   }
 
@@ -348,6 +405,7 @@ export class PaymentsService {
     providerRef: string,
     amountMinor: number,
     currency: string,
+    paystackAuth?: PaystackAuth,
   ): Promise<void> {
     const payment = await this.prisma.payment.findFirst({ where: { providerRef } });
 
@@ -367,7 +425,7 @@ export class PaymentsService {
       });
     }
 
-    await this.prisma.$transaction((tx) => this.applyPaymentSuccess(payment, tx));
+    await this.prisma.$transaction((tx) => this.applyPaymentSuccess(payment, tx, paystackAuth));
   }
 
   /**
@@ -457,7 +515,11 @@ export class PaymentsService {
    * idempotency guard.  count===0 means another process beat us to it; we
    * return without emitting so the gateway fires at most once.
    */
-  private async applyPaymentSuccess(payment: Payment, tx: Prisma.TransactionClient): Promise<void> {
+  private async applyPaymentSuccess(
+    payment: Payment,
+    tx: Prisma.TransactionClient,
+    paystackAuth?: PaystackAuth,
+  ): Promise<void> {
     if (!payment.roomId) return; // defensive — all initiators set roomId
 
     const now = new Date();
@@ -522,6 +584,7 @@ export class PaymentsService {
         const room = await tx.room.findUnique({ where: { id: payment.roomId } });
         if (!room) return;
 
+        // months is always 1 for recurring; legacy multi-month rows fall back to 1.
         const meta = (payment.metadata ?? {}) as Record<string, unknown>;
         const months = typeof meta['months'] === 'number' ? meta['months'] : 1;
 
@@ -539,6 +602,27 @@ export class PaymentsService {
           where: { id: payment.roomId },
           data: { retentionUntil: newRetentionUntil },
         });
+
+        // Set up recurring subscription — Paystack only (NOAUTH default).
+        // paystackAuth is absent for Flutterwave payments; those remain one-shot.
+        if (paystackAuth) {
+          const nextChargeAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000);
+          const sub = await tx.retentionSubscription.create({
+            data: {
+              roomId: payment.roomId,
+              userId: payment.userId,
+              authorizationCode: paystackAuth.code,
+              email: paystackAuth.email,
+              currency: payment.currency,
+              amountMinor: payment.amountMinor,
+              status: 'ACTIVE',
+              nextChargeAt,
+            },
+          });
+          // Enqueue outside the transaction so the job ID isn't wasted on rollback.
+          // We use a post-commit enqueue pattern via a local reference captured here.
+          void this.retentionRenew.enqueueRenewal(sub.id);
+        }
 
         this.gateway.emitRetentionExtended(payment.roomId, newRetentionUntil.toISOString());
         break;

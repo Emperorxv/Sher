@@ -65,6 +65,12 @@ enum UnlockState {
   EXEMPT
 }
 
+enum RetentionSubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  FAILED
+}
+
 enum ReportTargetType {
   PHOTO
   MEMBER
@@ -102,14 +108,15 @@ model User {
   updatedAt        DateTime   @updatedAt
   deletedAt        DateTime?
 
-  hostedRooms   Room[]          @relation("RoomHost")
-  memberships   Membership[]
-  photos        Photo[]
-  payments      Payment[]
-  deviceTokens  DeviceToken[]
-  reactions     PhotoReaction[]
-  refreshTokens RefreshToken[]
-  reports       Report[]
+  hostedRooms             Room[]                  @relation("RoomHost")
+  memberships             Membership[]
+  photos                  Photo[]
+  payments                Payment[]
+  deviceTokens            DeviceToken[]
+  reactions               PhotoReaction[]
+  refreshTokens           RefreshToken[]
+  reports                 Report[]
+  retentionSubscriptions  RetentionSubscription[]
 
   @@index([phone])
 }
@@ -139,11 +146,12 @@ model Room {
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
-  memberships      Membership[]
-  photos           Photo[]
-  payments         Payment[]
-  retentionWindows RetentionWindow[]
-  reports          Report[]
+  memberships             Membership[]
+  photos                  Photo[]
+  payments                Payment[]
+  retentionWindows        RetentionWindow[]
+  retentionSubscriptions  RetentionSubscription[]
+  reports                 Report[]
 
   @@index([joinCode])
   @@index([status, retentionUntil])
@@ -242,6 +250,32 @@ model RetentionWindow {
   paymentId String?
   createdAt DateTime @default(now())
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+// Tracks an active recurring-storage subscription for a room.
+// Created when a PAYSTACK RETENTION_EXTENSION webhook succeeds and the
+// authorization is reusable.  The RetentionRenewProcessor charges the same
+// card every 30 days until status != ACTIVE.
+// Authorization: only the payer (userId) may cancel — other members cannot
+// cancel someone else's stored-card subscription.
+model RetentionSubscription {
+  id                String                     @id @default(cuid())
+  roomId            String
+  userId            String // the member who originally paid — payer-only cancel
+  authorizationCode String // Paystack authorization_code for recurring charges
+  email             String // email used for the original charge (required by Paystack)
+  currency          String // ISO 4217 — locked to room at subscription creation
+  amountMinor       Int // charged each renewal cycle
+  status            RetentionSubscriptionStatus @default(ACTIVE)
+  nextChargeAt      DateTime // when the next renewal job is scheduled to fire
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([roomId, status])
+  @@index([userId])
 }
 
 model DeviceToken {

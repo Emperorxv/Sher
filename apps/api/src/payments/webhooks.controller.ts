@@ -35,7 +35,13 @@ export function verifyFlutterwaveHash(hashHeader: string, secretHash: string): b
 
 interface PaystackWebhookPayload {
   event: string;
-  data: { reference: string; amount: number; currency: string };
+  data: {
+    reference: string;
+    amount: number;
+    currency: string;
+    customer?: { email?: string };
+    authorization?: { authorization_code?: string; reusable?: boolean };
+  };
 }
 
 interface FlutterwaveWebhookPayload {
@@ -105,10 +111,19 @@ export class WebhooksController {
     if (rawBody.length > 0) {
       const event = JSON.parse(rawBody.toString('utf8')) as PaystackWebhookPayload;
       if (event.event === 'charge.success') {
+        // Extract reusable authorization for recurring-storage subscription setup.
+        const auth = event.data.authorization;
+        const email = event.data.customer?.email;
+        const paystackAuth =
+          auth?.reusable === true && auth.authorization_code && email
+            ? { code: auth.authorization_code, email }
+            : undefined;
+
         await this.paymentsService.handleWebhookSuccess(
           event.data.reference,
           event.data.amount,
           event.data.currency,
+          paystackAuth,
         );
       } else if (event.event === 'charge.failed') {
         await this.paymentsService.handleWebhookFailure(event.data.reference);
