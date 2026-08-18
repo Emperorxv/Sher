@@ -7,6 +7,7 @@ import { PhotosService } from './photos.service';
 import { PhotoQueueService } from './photos-queue.service';
 import { PhotoProcessorService } from './jobs/photo-process.processor';
 import { RetentionPurgeProcessor } from './jobs/retention-purge.processor';
+import { PhotoHardDeleteProcessor } from './jobs/photo-hard-delete.processor';
 
 @Module({
   imports: [
@@ -16,7 +17,13 @@ import { RetentionPurgeProcessor } from './jobs/retention-purge.processor';
     // StorageModule is @Global — no explicit import needed
   ],
   controllers: [PhotosController],
-  providers: [PhotosService, PhotoQueueService, PhotoProcessorService, RetentionPurgeProcessor],
+  providers: [
+    PhotosService,
+    PhotoQueueService,
+    PhotoProcessorService,
+    RetentionPurgeProcessor,
+    PhotoHardDeleteProcessor,
+  ],
   exports: [PhotosService],
 })
 export class PhotosModule {}

@@ -14,3 +14,11 @@
       `photoOutput.capturePhoto({}, {})` passes two arguments; v5 signature takes one optional arg.
       Works at runtime because the call target is mocked in tests. Fix alongside TD-001 once the
       correct v5 capture API is confirmed on device.
+
+- [ ] **TD-003 — `PhotoHardDeleteProcessor.process()` fetches all eligible photos in one query**
+      (`apps/api/src/photos/jobs/photo-hard-delete.processor.ts`)
+      `prisma.photo.findMany({ where: { status: DELETED, deletedAt: { lt: cutoff } } })` has no
+      `take` limit. Acceptable at current photo volumes, but will become slow / memory-intensive
+      as the install base grows. Fix: replace with a paginated loop (`take: N, cursor`-based or
+      `skip/take`) and process photos in chunks of e.g. 500. Address before photo count in the
+      `Photo` table exceeds ~50 000 soft-deleted rows older than 90 days.
