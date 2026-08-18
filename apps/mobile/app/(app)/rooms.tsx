@@ -72,6 +72,14 @@ export default function RoomsScreen() {
         <Text style={styles.title}>Your rooms</Text>
         <View style={styles.headerActions}>
           <Pressable
+            onPress={() => router.push('/settings')}
+            style={styles.headerBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Text style={styles.headerBtnText}>⚙</Text>
+          </Pressable>
+          <Pressable
             onPress={() => router.push('/rooms/join')}
             style={styles.headerBtn}
             accessibilityRole="button"

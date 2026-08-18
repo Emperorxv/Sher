@@ -156,6 +156,14 @@ export function createApiClient(opts: ApiClientOptions) {
     },
 
     me: () => rawFetch<UserDto>('/v1/auth/me'),
+
+    /** Step 1 of account deletion: sends OTP to the user's phone; returns challengeId. */
+    requestAccountDeletion: () =>
+      rawFetch<{ challengeId: string }>('/v1/auth/account/deletion-request', { method: 'POST' }),
+
+    /** Step 2 of account deletion: verify OTP and permanently anonymise the account. */
+    deleteAccount: (challengeId: string, code: string) =>
+      rawFetch<void>('/v1/auth/account', { method: 'DELETE', body: { challengeId, code } }),
   };
 
   // ─── Rooms endpoints ────────────────────────────────────────────────────────

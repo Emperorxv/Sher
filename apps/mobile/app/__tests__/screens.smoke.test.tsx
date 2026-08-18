@@ -94,7 +94,12 @@ jest.mock('../../lib/socket', () => ({
 
 // stores/auth: Zustand store
 jest.mock('../../stores/auth', () => ({
-  useAuthStore: jest.fn(() => ({ user: { id: 'user-test-1' } })),
+  useAuthStore: jest.fn(() => ({
+    user: { id: 'user-test-1', phone: '+2348012345678', email: 'test@example.com' },
+    signOut: jest.fn(),
+    requestAccountDeletion: jest.fn(),
+    deleteAccount: jest.fn(),
+  })),
 }));
 
 // lib/token-store: SecureStore wrapper
@@ -181,5 +186,13 @@ describe('Phase 4 screen smoke tests', () => {
       default: React.ComponentType;
     };
     expect(() => render(<RoomDashboard />, { wrapper: Wrapper })).not.toThrow();
+  });
+
+  it('SettingsScreen renders without throwing', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { default: SettingsScreen } = require('../(app)/settings') as {
+      default: React.ComponentType;
+    };
+    expect(() => render(<SettingsScreen />, { wrapper: Wrapper })).not.toThrow();
   });
 });

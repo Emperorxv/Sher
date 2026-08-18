@@ -30,6 +30,15 @@ interface AuthState {
    */
   completeSignup: (birthYear: number, parentalConsentConfirmed?: boolean) => Promise<void>;
 
+  /** Step 1 of account deletion: sends OTP to the user's phone; returns challengeId. */
+  requestAccountDeletion: () => Promise<{ challengeId: string }>;
+
+  /**
+   * Step 2 of account deletion: verify OTP, permanently anonymise the account,
+   * and clear the local session (tokens + state).
+   */
+  deleteAccount: (challengeId: string, code: string) => Promise<void>;
+
   /** Sign out: clear tokens and reset state. */
   signOut: () => Promise<void>;
 
@@ -90,6 +99,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
       await tokenStore.setAccess(result.tokens.accessToken);
       await tokenStore.setRefresh(result.tokens.refreshToken);
       set({ user: result.user, isSignedIn: true, pendingSignup: null });
+    },
+
+    requestAccountDeletion: async () => {
+      return apiClient.auth.requestAccountDeletion();
+    },
+
+    deleteAccount: async (challengeId, code) => {
+      await apiClient.auth.deleteAccount(challengeId, code);
+      // Account is now anonymised — clear local session immediately.
+      disconnectRoomSocket();
+      await tokenStore.clear();
+      set({ user: null, isSignedIn: false, pendingSignup: null });
     },
 
     signOut: async () => {
