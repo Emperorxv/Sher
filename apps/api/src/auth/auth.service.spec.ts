@@ -11,6 +11,7 @@ const MOCK_USER = {
   marketingConsent: false,
   displayName: null,
   avatarUrl: null,
+  preferredCurrency: null,
   status: 'ACTIVE' as const,
   birthYear: 1990,
   ageConfirmedAt: new Date(),
@@ -35,6 +36,12 @@ describe('AuthService', () => {
       findUniqueOrThrow: jest.Mock;
     };
     auditLog: { create: jest.Mock };
+    retentionSubscription: { updateMany: jest.Mock };
+    deviceToken: { deleteMany: jest.Mock };
+    refreshToken: { updateMany: jest.Mock };
+    otpChallenge: { deleteMany: jest.Mock };
+    room: { updateMany: jest.Mock };
+    $transaction: jest.Mock;
   };
   let mockOtp: { requestOtp: jest.Mock; verifyOtp: jest.Mock };
   let mockTokens: { signAccessToken: jest.Mock; verifyAccessToken: jest.Mock };
@@ -46,17 +53,29 @@ describe('AuthService', () => {
   };
   let mockEmailVerify: { sendVerification: jest.Mock };
   let mockSignupTickets: { issue: jest.Mock; verify: jest.Mock };
+  let mockStorage: { deleteObject: jest.Mock };
 
   beforeEach(() => {
     mockPrisma = {
       user: {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue(MOCK_USER),
-        update: jest.fn(),
+        update: jest.fn().mockResolvedValue(MOCK_USER),
         findUniqueOrThrow: jest.fn().mockResolvedValue(MOCK_USER),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      retentionSubscription: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      deviceToken: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      otpChallenge: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      room: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: jest.fn(),
     };
+    // $transaction routes the callback to the same mock object so inner calls are spied on.
+    mockPrisma.$transaction.mockImplementation((cb: (tx: typeof mockPrisma) => Promise<unknown>) =>
+      cb(mockPrisma),
+    );
+
     mockOtp = {
       requestOtp: jest.fn().mockResolvedValue({ challengeId: 'chal-id' }),
       verifyOtp: jest.fn().mockResolvedValue({ phone: MOCK_USER.phone }),
@@ -76,6 +95,7 @@ describe('AuthService', () => {
       issue: jest.fn().mockReturnValue('mock-signup-ticket'),
       verify: jest.fn().mockReturnValue({ phone: MOCK_USER.phone }),
     };
+    mockStorage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
 
     service = new AuthService(
       mockPrisma as never,
@@ -84,6 +104,7 @@ describe('AuthService', () => {
       mockRefreshTokens as never,
       mockEmailVerify as never,
       mockSignupTickets as never,
+      mockStorage as never,
     );
   });
 
@@ -294,15 +315,129 @@ describe('AuthService', () => {
     });
   });
 
-  describe('deleteAccount()', () => {
-    it('revokes all tokens and soft-deletes the user', async () => {
-      await service.deleteAccount('user-id');
-      expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith('user-id');
-      expect(mockPrisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'DELETED', deletedAt: expect.any(Date) }),
-        }),
+  // ── requestAccountDeletion() ────────────────────────────────────────────────
+
+  describe('requestAccountDeletion()', () => {
+    it('requests an OTP for the user phone and returns challengeId', async () => {
+      const result = await service.requestAccountDeletion('user-id');
+      expect(mockOtp.requestOtp).toHaveBeenCalledWith(MOCK_USER.phone);
+      expect(result).toEqual({ challengeId: 'chal-id' });
+    });
+
+    it('throws ALREADY_DELETED when account is already anonymised', async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce({
+        ...MOCK_USER,
+        status: 'DELETED',
+      });
+      await expect(service.requestAccountDeletion('user-id')).rejects.toHaveProperty(
+        'response.code',
+        'ALREADY_DELETED',
       );
+      expect(mockOtp.requestOtp).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── deleteAccount() ─────────────────────────────────────────────────────────
+
+  describe('deleteAccount()', () => {
+    it('verifies OTP, runs the transaction, and anonymises all PII fields', async () => {
+      await service.deleteAccount('user-id', 'chal-id', '123456');
+
+      expect(mockOtp.verifyOtp).toHaveBeenCalledWith('chal-id', '123456');
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
+
+      // RetentionSubscriptions cancelled
+      expect(mockPrisma.retentionSubscription.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-id', status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
+      });
+
+      // DeviceTokens hard-deleted
+      expect(mockPrisma.deviceToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-id' },
+      });
+
+      // RefreshTokens revoked
+      expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-id', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+
+      // OTP challenges for original phone deleted
+      expect(mockPrisma.otpChallenge.deleteMany).toHaveBeenCalledWith({
+        where: { phone: MOCK_USER.phone },
+      });
+
+      // DRAFT rooms archived
+      expect(mockPrisma.room.updateMany).toHaveBeenCalledWith({
+        where: { hostId: 'user-id', status: 'DRAFT' },
+        data: { status: 'ARCHIVED' },
+      });
+
+      // User row anonymised
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-id' },
+        data: expect.objectContaining({
+          phone: 'DELETED:user-id',
+          email: 'deleted-user-id@deleted.sher.app',
+          displayName: null,
+          avatarUrl: null,
+          status: 'DELETED',
+          deletedAt: expect.any(Date),
+        }),
+      });
+
+      // Audit log written
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: 'user-id',
+          action: 'ACCOUNT_DELETED',
+          entity: 'User',
+          entityId: 'user-id',
+          metadata: { reason: 'self_requested' },
+        }),
+      });
+    });
+
+    it('attempts R2 avatar deletion when avatarUrl is present', async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce({
+        ...MOCK_USER,
+        avatarUrl: 'avatars/user-id/avatar.jpg',
+      });
+      await service.deleteAccount('user-id', 'chal-id', '123456');
+      expect(mockStorage.deleteObject).toHaveBeenCalledWith('avatars/user-id/avatar.jpg');
+    });
+
+    it('skips R2 deletion when avatarUrl is null', async () => {
+      await service.deleteAccount('user-id', 'chal-id', '123456');
+      expect(mockStorage.deleteObject).not.toHaveBeenCalled();
+    });
+
+    it('does not run the transaction when OTP verification fails', async () => {
+      mockOtp.verifyOtp.mockRejectedValueOnce(new Error('OTP_WRONG_CODE'));
+      await expect(service.deleteAccount('user-id', 'chal-id', 'wrong')).rejects.toThrow();
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws ALREADY_DELETED when account is already anonymised', async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce({
+        ...MOCK_USER,
+        status: 'DELETED',
+      });
+      await expect(service.deleteAccount('user-id', 'chal-id', '123456')).rejects.toHaveProperty(
+        'response.code',
+        'ALREADY_DELETED',
+      );
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('R2 avatar failure does not re-throw (Promise.allSettled)', async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce({
+        ...MOCK_USER,
+        avatarUrl: 'avatars/user-id/avatar.jpg',
+      });
+      mockStorage.deleteObject.mockRejectedValueOnce(new Error('R2 error'));
+      await expect(service.deleteAccount('user-id', 'chal-id', '123456')).resolves.toBeUndefined();
     });
   });
 });

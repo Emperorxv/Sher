@@ -15,6 +15,7 @@ import { AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { CompleteSignupDto } from './dto/complete-signup.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { EmailVerifyDto } from './dto/email-verify.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { OtpRequestDto } from './dto/otp-request.dto';
@@ -105,9 +106,27 @@ export class AuthController {
     });
   }
 
+  /**
+   * Step 1 of the two-phase account deletion flow.
+   * Sends an OTP to the authenticated user's registered phone number.
+   * Returns a challengeId that must be passed to DELETE /auth/account.
+   */
+  @Post('account/deletion-request')
+  @HttpCode(HttpStatus.OK)
+  requestAccountDeletion(@CurrentUser() user: AuthenticatedUser): Promise<{ challengeId: string }> {
+    return this.auth.requestAccountDeletion(user.id);
+  }
+
+  /**
+   * Step 2 of the two-phase account deletion flow.
+   * Verifies the OTP from step 1, then permanently anonymises the account.
+   */
   @Delete('account')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deleteAccount(@CurrentUser() user: AuthenticatedUser): Promise<void> {
-    return this.auth.deleteAccount(user.id);
+  deleteAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DeleteAccountDto,
+  ): Promise<void> {
+    return this.auth.deleteAccount(user.id, dto.challengeId, dto.code);
   }
 }

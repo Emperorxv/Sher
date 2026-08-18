@@ -6,6 +6,7 @@
  *  - Mocked PrismaService (in-memory state)
  *  - Mocked OtpService (deterministic phone return)
  *  - Mocked EmailVerifyService (no-op)
+ *  - Mocked StorageService (no-op)
  */
 import { HttpStatus, ValidationPipe } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
@@ -17,6 +18,7 @@ import request from 'supertest';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { ResponseEnvelopeInterceptor } from '../common/interceptors/response-envelope.interceptor';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -73,15 +75,15 @@ const db = {
 };
 
 function makeMockPrisma() {
-  return {
+  const mock = {
     user: {
       findUnique: jest.fn(({ where }: { where: { id?: string; phone?: string } }) =>
         Promise.resolve(
           db.users.find((u) => (where.id ? u.id === where.id : u.phone === where.phone)) ?? null,
         ),
       ),
-      findUniqueOrThrow: jest.fn(({ where }: { where: { id: string } }) => {
-        const u = db.users.find((u) => u.id === where.id);
+      findUniqueOrThrow: jest.fn(({ where }: { where: { id?: string; phone?: string } }) => {
+        const u = db.users.find((u) => (where.id ? u.id === where.id : u.phone === where.phone));
         if (!u) throw new Error('Not found');
         return Promise.resolve(u);
       }),
@@ -179,6 +181,7 @@ function makeMockPrisma() {
           return Promise.resolve({ count });
         },
       ),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     deviceToken: {
       upsert: jest.fn().mockResolvedValue({ id: 'device-id' }),
@@ -189,11 +192,22 @@ function makeMockPrisma() {
       create: jest.fn().mockResolvedValue({ id: CHALLENGE_ID, phone: TEST_PHONE }),
       findUnique: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    retentionSubscription: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    room: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     auditLog: {
       create: jest.fn().mockResolvedValue({}),
     },
+    // $transaction routes the callback to this same mock so inner spies work.
+    $transaction: jest.fn(),
   };
+  mock.$transaction.mockImplementation((cb: (tx: typeof mock) => Promise<unknown>) => cb(mock));
+  return mock;
 }
 
 describe('AuthController (integration)', () => {
@@ -201,6 +215,7 @@ describe('AuthController (integration)', () => {
   let mockPrisma: ReturnType<typeof makeMockPrisma>;
   let mockOtp: { requestOtp: jest.Mock; verifyOtp: jest.Mock };
   let mockEmailVerify: { sendVerification: jest.Mock; verify: jest.Mock; resend: jest.Mock };
+  let mockStorage: { deleteObject: jest.Mock };
 
   beforeAll(async () => {
     mockPrisma = makeMockPrisma();
@@ -213,6 +228,7 @@ describe('AuthController (integration)', () => {
       verify: jest.fn().mockResolvedValue(undefined),
       resend: jest.fn().mockResolvedValue(undefined),
     };
+    mockStorage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       imports: [
@@ -235,6 +251,7 @@ describe('AuthController (integration)', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OtpService, useValue: mockOtp },
         { provide: EmailVerifyService, useValue: mockEmailVerify },
+        { provide: StorageService, useValue: mockStorage },
       ],
     }).compile();
 
@@ -291,6 +308,11 @@ describe('AuthController (integration)', () => {
     mockEmailVerify.sendVerification.mockResolvedValue(undefined);
     mockEmailVerify.verify.mockResolvedValue(undefined);
     mockEmailVerify.resend.mockResolvedValue(undefined);
+    mockStorage.deleteObject.mockResolvedValue(undefined);
+    // Re-wire $transaction after jest.clearAllMocks() clears mockImplementation.
+    mockPrisma.$transaction.mockImplementation((cb: (tx: typeof mockPrisma) => Promise<unknown>) =>
+      cb(mockPrisma),
+    );
   });
 
   describe('POST /v1/auth/otp/request', () => {
@@ -591,13 +613,71 @@ describe('AuthController (integration)', () => {
     });
   });
 
+  // ── Account deletion (two-phase) ──────────────────────────────────────────
+
+  describe('POST /v1/auth/account/deletion-request', () => {
+    it('200 returns challengeId when user is ACTIVE', async () => {
+      const { accessToken } = await signIn();
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/account/deletion-request')
+        .set('Authorization', `Bearer ${accessToken}`);
+      expect(res.status).toBe(HttpStatus.OK);
+      expect((res.body as { data: { challengeId: string } }).data).toHaveProperty(
+        'challengeId',
+        CHALLENGE_ID,
+      );
+      expect(mockOtp.requestOtp).toHaveBeenCalledWith(TEST_PHONE);
+    });
+
+    it('401 without Authorization header', async () => {
+      const res = await request(app.getHttpServer()).post('/v1/auth/account/deletion-request');
+      expect(res.status).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
   describe('DELETE /v1/auth/account', () => {
-    it('204 on success', async () => {
+    it('204 on success — OTP verified, account anonymised', async () => {
+      const { accessToken } = await signIn();
+      const res = await request(app.getHttpServer())
+        .delete('/v1/auth/account')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ challengeId: CHALLENGE_ID, code: '123456' });
+      expect(res.status).toBe(HttpStatus.NO_CONTENT);
+      expect(mockOtp.verifyOtp).toHaveBeenCalledWith(CHALLENGE_ID, '123456');
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('400 when challengeId is missing', async () => {
+      const { accessToken } = await signIn();
+      const res = await request(app.getHttpServer())
+        .delete('/v1/auth/account')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: '123456' });
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('400 when code is wrong length (not exactly 6 digits)', async () => {
+      const { accessToken } = await signIn();
+      const res = await request(app.getHttpServer())
+        .delete('/v1/auth/account')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ challengeId: CHALLENGE_ID, code: '12' });
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('400 when body is entirely missing', async () => {
       const { accessToken } = await signIn();
       const res = await request(app.getHttpServer())
         .delete('/v1/auth/account')
         .set('Authorization', `Bearer ${accessToken}`);
-      expect(res.status).toBe(HttpStatus.NO_CONTENT);
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('401 without Authorization header', async () => {
+      const res = await request(app.getHttpServer())
+        .delete('/v1/auth/account')
+        .send({ challengeId: CHALLENGE_ID, code: '123456' });
+      expect(res.status).toBe(HttpStatus.UNAUTHORIZED);
     });
   });
 

@@ -198,6 +198,7 @@ describe('AuthService — two phones produce distinct users and distinct JWT sub
       mockRefreshTokens as never,
       mockEmailVerify as never,
       mockSignupTickets as never,
+      { deleteObject: jest.fn() } as never, // StorageService — not exercised in this suite
     );
   });
 
