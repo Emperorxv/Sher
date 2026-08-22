@@ -14,6 +14,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -35,6 +36,20 @@ import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../
 import { tokenStore } from '../../../lib/token-store';
 import { useAuthStore } from '../../../stores/auth';
 import { colors, fonts, fontSizes, radii, spacing } from '../../../theme';
+
+// TODO: replace with real App Store / Play Store URLs before launch.
+const APP_STORE_URL = 'https://apps.apple.com/app/sher/TODO';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=TODO';
+
+export function buildShareMessage(joinCode: string): string {
+  const code = joinCode.toUpperCase();
+  return (
+    `Join my Sher room! Use code ${code} in the Sher app, or scan the QR code in the room dashboard.\n\n` +
+    `Don't have Sher yet? Download it here:\n` +
+    `iOS: ${APP_STORE_URL}\n` +
+    `Android: ${PLAY_STORE_URL}`
+  );
+}
 
 function MemberRow({
   member,
@@ -334,6 +349,15 @@ export default function RoomDashboard() {
               />
             </View>
             <JoinCodeDisplay code={room.joinCode} />
+            <Button
+              label="Share"
+              variant="ghost"
+              style={styles.shareBtn}
+              onPress={() => {
+                void Share.share({ message: buildShareMessage(room.joinCode) });
+              }}
+              accessibilityLabel="Share room invite"
+            />
           </View>
         )}
 
@@ -500,6 +524,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.cream,
     borderRadius: radii.button,
+  },
+  shareBtn: {
+    alignSelf: 'stretch',
   },
   statsRow: {
     flexDirection: 'row',
