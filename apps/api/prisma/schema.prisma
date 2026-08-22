@@ -264,8 +264,13 @@ model RetentionSubscription {
   roomId            String
   userId            String // the member who originally paid — payer-only cancel
   provider          PaymentProvider            @default(PAYSTACK) // PAYSTACK = BullMQ-managed; APPLE_IAP = Apple-managed
-  authorizationCode String // PAYSTACK: authorization_code; APPLE_IAP: originalTransactionId
-  email             String // PAYSTACK: charge email; APPLE_IAP: user email (stored for record-keeping)
+  /// Field reuse by provider (deliberate tradeoff — avoids nullable columns):
+  /// PAYSTACK: Paystack authorization_code used for recurring chargeAuthorization calls.
+  /// APPLE_IAP: Apple originalTransactionId — stored for receipt re-validation on app launch.
+  authorizationCode String
+  /// PAYSTACK: email address required by Paystack for chargeAuthorization.
+  /// APPLE_IAP: user's account email — stored for record-keeping only; Apple does not need it.
+  email             String
   currency          String // ISO 4217 — locked to room at subscription creation
   amountMinor       Int // charged each renewal cycle
   status            RetentionSubscriptionStatus @default(ACTIVE)
