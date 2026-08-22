@@ -38,6 +38,7 @@ enum PhotoStatus {
 enum PaymentProvider {
   PAYSTACK
   FLUTTERWAVE
+  APPLE_IAP
 }
 
 enum PaymentStatus {
@@ -225,7 +226,7 @@ model Payment {
   roomId       String? // for BASE_UNLOCK / RETENTION_EXTENSION
   membershipId String? // for MEMBER_UNLOCK — exact target
   provider     PaymentProvider
-  providerRef  String          @unique // Paystack reference
+  providerRef  String          @unique // Paystack / Flutterwave reference; Apple transactionId for APPLE_IAP
   amountMinor  Int // smallest unit (kobo, cents, pesewa, etc.)
   currency     String // ISO 4217: NGN, USD, GHS, KES, ZAR, GBP, EUR
   fxLockedRate Decimal?        @db.Decimal(18, 8) // FX rate snapshot if conversion was applied
@@ -262,12 +263,13 @@ model RetentionSubscription {
   id                String                     @id @default(cuid())
   roomId            String
   userId            String // the member who originally paid — payer-only cancel
-  authorizationCode String // Paystack authorization_code for recurring charges
-  email             String // email used for the original charge (required by Paystack)
+  provider          PaymentProvider            @default(PAYSTACK) // PAYSTACK = BullMQ-managed; APPLE_IAP = Apple-managed
+  authorizationCode String // PAYSTACK: authorization_code; APPLE_IAP: originalTransactionId
+  email             String // PAYSTACK: charge email; APPLE_IAP: user email (stored for record-keeping)
   currency          String // ISO 4217 — locked to room at subscription creation
   amountMinor       Int // charged each renewal cycle
   status            RetentionSubscriptionStatus @default(ACTIVE)
-  nextChargeAt      DateTime // when the next renewal job is scheduled to fire
+  nextChargeAt      DateTime // PAYSTACK: next BullMQ fire time; APPLE_IAP: expected Apple renewal date (informational)
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
 

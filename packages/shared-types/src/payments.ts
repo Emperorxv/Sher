@@ -1,4 +1,4 @@
-export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE';
+export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'APPLE_IAP';
 export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
 export type PaymentPurpose =
   | 'BASE_UNLOCK'
@@ -43,6 +43,13 @@ export interface UnlockStatusDto {
   memberUnlockPending: boolean; // a PENDING MEMBER_UNLOCK for the caller exists
   /** null when callerUnlockState is UNLOCKED or EXEMPT */
   amountDue: AmountDueDto | null;
+  /**
+   * Apple App Store product ID for the unlock tier (e.g. 'Tier1').
+   * Present when callerUnlockState is LOCKED and room.status is ENDED; null otherwise.
+   * iOS clients use this to initiate the correct native IAP purchase.
+   * Optional so existing mock fixtures in non-iOS test paths need not be updated.
+   */
+  iapProductId?: string | null;
 }
 
 /** One entry in GET /payments */

@@ -31,6 +31,7 @@ const ACTIVE_SUBSCRIPTION = {
   id: SUB_ID,
   roomId: ROOM_ID,
   userId: USER_ID,
+  provider: 'PAYSTACK' as const,
   authorizationCode: 'AUTH_abc123',
   email: 'host@sher.dev',
   currency: 'NGN',
@@ -137,6 +138,20 @@ describe('inactive subscription', () => {
     const { processor, paystack } = makeProcessor(null);
     await processor.process(makeJob());
     expect(paystack.chargeAuthorization).not.toHaveBeenCalled();
+  });
+});
+
+describe('non-PAYSTACK subscription', () => {
+  it('skips BullMQ renewal and does NOT charge when provider is APPLE_IAP', async () => {
+    const appleIapSub = {
+      ...ACTIVE_SUBSCRIPTION,
+      provider: 'APPLE_IAP' as const,
+    };
+    const { processor, prisma, paystack } = makeProcessor(appleIapSub);
+    await processor.process(makeJob());
+    expect(paystack.chargeAuthorization).not.toHaveBeenCalled();
+    expect(prisma.retentionSubscription.update).not.toHaveBeenCalled();
+    expect(processor.enqueueRenewal).not.toHaveBeenCalled();
   });
 });
 

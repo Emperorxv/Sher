@@ -104,6 +104,16 @@ export class RetentionRenewProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // Non-PAYSTACK subscriptions (e.g. APPLE_IAP) are managed externally.
+    // Apple handles recurring billing; BullMQ must never attempt to re-charge them.
+    if (sub.provider !== 'PAYSTACK') {
+      this.logger.log(
+        { subscriptionId, provider: sub.provider },
+        'Non-PAYSTACK subscription — skipping BullMQ renewal',
+      );
+      return;
+    }
+
     const { room } = sub;
 
     // Room already purged — silently cancel the subscription.

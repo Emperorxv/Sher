@@ -34,6 +34,8 @@ import { InitiateUnlockInput } from './schemas/initiate-unlock.schema';
 import { RetentionExtendInput } from './schemas/retention-extend.schema';
 import { RoomsGateway } from '../rooms/rooms.gateway';
 import { RetentionRenewProcessor } from './jobs/retention-renew.processor';
+import { getRoomUnlockTierIndex } from '../pricing/price-book';
+import { TIER_INDEX_TO_PRODUCT_ID } from './providers/apple-iap.constants';
 
 // Paystack authorization data extracted from the charge.success webhook.
 interface PaystackAuth {
@@ -322,19 +324,26 @@ export class PaymentsService {
     const callerUnlockState = membership.unlockState as UnlockStatusDto['callerUnlockState'];
 
     let amountDue: AmountDueDto | null = null;
+    let iapProductId: string | null = null;
+
     if (callerUnlockState === 'LOCKED' && room.status === RoomStatus.ENDED) {
       // Any LOCKED member in an ENDED room sees the unified ROOM_UNLOCK tier price.
       // The tier is determined by the frozen memberCountAtEnd snapshot.
+      const memberCount = room.memberCountAtEnd ?? 1;
       const quote = this.pricing.quote({
         currency: room.pricingCurrency as SupportedCurrency,
         purpose: 'ROOM_UNLOCK',
-        memberCountAtEnd: room.memberCountAtEnd ?? 1,
+        memberCountAtEnd: memberCount,
       });
       amountDue = {
         amountMinor: quote.amountMinor,
         amountDisplay: quote.display,
         purpose: 'ROOM_UNLOCK',
       };
+
+      // iOS clients use this to initiate the correct native IAP purchase.
+      const tierIndex = getRoomUnlockTierIndex(memberCount);
+      iapProductId = TIER_INDEX_TO_PRODUCT_ID[tierIndex];
     }
 
     return {
@@ -343,6 +352,7 @@ export class PaymentsService {
       baseUnlockPending: pendingBase !== null,
       memberUnlockPending: pendingMember !== null,
       amountDue,
+      iapProductId,
     };
   }
 

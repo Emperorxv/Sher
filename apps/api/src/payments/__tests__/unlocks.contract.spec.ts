@@ -539,6 +539,7 @@ describe('UnlocksController (contract)', () => {
           amountDisplay: '₦7,000.00',
           purpose: 'ROOM_UNLOCK',
         },
+        iapProductId: 'Tier1',
       });
     });
 

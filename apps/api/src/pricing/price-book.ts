@@ -119,6 +119,16 @@ export const ROOM_UNLOCK_TIERS: RoomUnlockTier[] = [
 ];
 
 /**
+ * Returns the 1-based tier index (1, 2, or 3) for a given memberCountAtEnd.
+ * Used to map room membership count to the correct Apple IAP product ID tier.
+ * The last tier (maxMembers = Infinity) guarantees findIndex always returns a valid index.
+ */
+export function getRoomUnlockTierIndex(memberCountAtEnd: number): 1 | 2 | 3 {
+  const idx = ROOM_UNLOCK_TIERS.findIndex((t) => memberCountAtEnd <= t.maxMembers);
+  return (idx + 1) as 1 | 2 | 3;
+}
+
+/**
  * Returns the ROOM_UNLOCK amount in minor units for the given member count and
  * currency. Falls back to tier 1 when memberCountAtEnd is 0 or null.
  */
