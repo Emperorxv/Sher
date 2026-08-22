@@ -23,6 +23,7 @@
     "expo-camera": "^55.0.19",
     "expo-file-system": "~55.0.24",
     "expo-font": "^55.0.8",
+    "expo-iap": "^5.3.2",
     "expo-image-picker": "~55.0.22",
     "expo-linking": "~55.0.15",
     "expo-media-library": "~55.0.19",

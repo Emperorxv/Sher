@@ -227,7 +227,7 @@ export default function RoomDashboard() {
     };
   }, []);
 
-  // ── Payment handler ────────────────────────────────────────────────────────
+  // ── Payment handlers ───────────────────────────────────────────────────────
 
   const handlePay = useCallback(
     async (provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
@@ -245,6 +245,23 @@ export default function RoomDashboard() {
     },
     [initiateRoomUnlock, id, router],
   );
+
+  // Flutterwave fallback — revealed by PaywallSheet after a PAYSTACK_UNAVAILABLE error.
+  // Passing this as onPayFallback means the fallback button only appears on
+  // Android/web (where this handler is wired). On iOS the onPayFallback prop is
+  // omitted (Stage 3) so the button is suppressed even after a Paystack error.
+  const handlePayFallback = useCallback(async () => {
+    const result = await initiateRoomUnlock.mutateAsync({ provider: 'FLUTTERWAVE' });
+    router.push({
+      pathname: '/checkout/[paymentRef]',
+      params: {
+        paymentRef: result.providerRef,
+        roomId: id!,
+        authorizationUrl: result.authorizationUrl,
+        purpose: 'ROOM_UNLOCK',
+      },
+    });
+  }, [initiateRoomUnlock, id, router]);
 
   // ── Room actions ───────────────────────────────────────────────────────────
 
@@ -454,6 +471,7 @@ export default function RoomDashboard() {
         <PaywallSheet
           pricing={paywallPricing}
           onPay={handlePay}
+          onPayFallback={handlePayFallback}
           onDismiss={() => setPaywallOpen(false)}
         />
       )}

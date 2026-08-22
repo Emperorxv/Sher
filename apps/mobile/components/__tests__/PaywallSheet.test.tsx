@@ -90,19 +90,19 @@ describe('interaction', () => {
     await waitFor(() => expect(onPay).toHaveBeenCalledWith('PAYSTACK'));
   });
 
-  it('tapping Flutterwave button calls onPay with FLUTTERWAVE', async () => {
-    // Put sheet in failed_paystack state first.
-    const onPay = jest
-      .fn()
-      .mockRejectedValueOnce({ code: 'PAYSTACK_UNAVAILABLE' })
-      .mockResolvedValue(undefined);
-    const { getByText } = renderSheet({ onPay });
+  it('tapping Flutterwave button calls onPayFallback (not onPay)', async () => {
+    // Put sheet in failed_paystack state first, then verify onPayFallback is called.
+    const onPay = jest.fn().mockRejectedValueOnce({ code: 'PAYSTACK_UNAVAILABLE' });
+    const onPayFallback = jest.fn().mockResolvedValue(undefined);
+    const { getByText } = renderSheet({ onPay, onPayFallback });
 
     fireEvent.press(getByText('Pay with Paystack'));
     await waitFor(() => expect(getByText('Try Flutterwave instead')).toBeTruthy());
 
     fireEvent.press(getByText('Try Flutterwave instead'));
-    await waitFor(() => expect(onPay).toHaveBeenCalledWith('FLUTTERWAVE'));
+    await waitFor(() => expect(onPayFallback).toHaveBeenCalledTimes(1));
+    // onPay was only called once (for PAYSTACK) — Flutterwave goes via onPayFallback
+    expect(onPay).toHaveBeenCalledTimes(1);
   });
 
   it('tapping Dismiss calls onDismiss', () => {
@@ -138,12 +138,26 @@ describe('state machine', () => {
     });
   });
 
-  it('initiating → failed_paystack: Flutterwave button appears on PAYSTACK_UNAVAILABLE', async () => {
+  it('initiating → failed_paystack: Flutterwave button appears on PAYSTACK_UNAVAILABLE when onPayFallback is provided', async () => {
     const onPay = jest.fn().mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
-    const { getByText } = renderSheet({ onPay });
+    const onPayFallback = jest.fn();
+    const { getByText } = renderSheet({ onPay, onPayFallback });
 
     fireEvent.press(getByText('Pay with Paystack'));
     await waitFor(() => expect(getByText('Try Flutterwave instead')).toBeTruthy());
+  });
+
+  it('T7: Flutterwave button stays hidden in failed_paystack state when onPayFallback is absent', async () => {
+    // Without onPayFallback (e.g. iOS Apple IAP path), the fallback button must
+    // never appear even after a PAYSTACK_UNAVAILABLE error.
+    const onPay = jest.fn().mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
+    const { getByText, queryByText } = renderSheet({ onPay }); // no onPayFallback
+
+    fireEvent.press(getByText('Pay with Paystack'));
+    await waitFor(() =>
+      expect(getByText("Couldn't reach Paystack. Try Flutterwave instead.")).toBeTruthy(),
+    );
+    expect(queryByText('Try Flutterwave instead')).toBeNull();
   });
 
   it('initiating → failed_other: Flutterwave button stays hidden on non-Paystack errors', async () => {

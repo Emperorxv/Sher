@@ -30,7 +30,13 @@
       "package": "app.sher.mobile",
       "permissions": ["android.permission.CAMERA"]
     },
-    "plugins": ["expo-router", "expo-secure-store", "expo-build-properties", "expo-image-picker"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-build-properties",
+      "expo-image-picker",
+      "expo-iap"
+    ],
     "experiments": {
       "typedRoutes": true
     }

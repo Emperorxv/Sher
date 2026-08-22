@@ -36,7 +36,7 @@ PODS:
     - ZXingObjC/PDF417
   - ExpoDomWebView (55.0.6):
     - ExpoModulesCore
-  - ExpoFileSystem (55.0.20):
+  - ExpoFileSystem (55.0.24):
     - ExpoModulesCore
   - ExpoFont (55.0.8):
     - ExpoModulesCore
@@ -56,6 +56,9 @@ PODS:
   - ExpoLinking (55.0.15):
     - ExpoModulesCore
   - ExpoLogBox (55.0.12):
+    - React-Core
+  - ExpoMediaLibrary (55.0.19):
+    - ExpoModulesCore
     - React-Core
   - ExpoModulesCore (55.0.25):
     - ExpoModulesJSI
@@ -2371,7 +2374,7 @@ DEPENDENCIES:
   - "ExpoCamera (from `../../../node_modules/.pnpm/expo-camera@55.0.19_@types+emscripten@1.41.5_expo@55.0.24_react-native@0.83.6_@babel+co_91686e7d64f115ee0ff4ecb376b8552e/node_modules/expo-camera/ios`)"
   - "ExpoCameraBarcodeScanning (from `../../../node_modules/.pnpm/expo-camera@55.0.19_@types+emscripten@1.41.5_expo@55.0.24_react-native@0.83.6_@babel+co_91686e7d64f115ee0ff4ecb376b8552e/node_modules/expo-camera/ios`)"
   - "ExpoDomWebView (from `../../../node_modules/.pnpm/@expo+dom-webview@55.0.6_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_882df4fdea8a9a3c00e3ce2347019ff2/node_modules/@expo/dom-webview/ios`)"
-  - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@55.0.20_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_f63574942aaf04d2f3ccea2dcfa3b46e/node_modules/expo-file-system/ios`)"
+  - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@55.0.24_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_19c7c739a49a30bdfd8ee2efd90c450c/node_modules/expo-file-system/ios`)"
   - "ExpoFont (from `../../../node_modules/.pnpm/expo-font@55.0.8_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metr_dc9730fac7689cfd5ff0e6ae95f83407/node_modules/expo-font/ios`)"
   - "ExpoGlassEffect (from `../../../node_modules/.pnpm/expo-glass-effect@55.0.11_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-na_275b50f502a4e3bee246ec67dde1d0da/node_modules/expo-glass-effect/ios`)"
   - "ExpoImage (from `../../../node_modules/.pnpm/expo-image@55.0.10_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+me_cf86bafdc5710cce89069ffc19fe0774/node_modules/expo-image/ios`)"
@@ -2379,6 +2382,7 @@ DEPENDENCIES:
   - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@55.0.8_expo@55.0.24_react@19.2.0/node_modules/expo-keep-awake/ios`)"
   - "ExpoLinking (from `../../../node_modules/.pnpm/expo-linking@55.0.15_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+_5c48a6a75d59934bbf212b5c10eaf246/node_modules/expo-linking/ios`)"
   - "ExpoLogBox (from `../../../node_modules/.pnpm/@expo+log-box@55.0.12_@expo+dom-webview@55.0.6_expo@55.0.24_react-native@0.83.6_@babel+_a6d079b3eb39f9c3b8dd07d1bdd29aaf/node_modules/@expo/log-box`)"
+  - "ExpoMediaLibrary (from `../../../node_modules/.pnpm/expo-media-library@55.0.19_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-n_5aac1ca88dddc9888c5cff5c6fbf46cf/node_modules/expo-media-library/ios`)"
   - "ExpoModulesCore (from `../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.7.4_@babel+core@7.29.0_react-native@0_a175c5e079b7c8e895ae6211ce0e4087/node_modules/expo-modules-core`)"
   - "ExpoModulesJSI (from `../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.7.4_@babel+core@7.29.0_react-native@0_a175c5e079b7c8e895ae6211ce0e4087/node_modules/expo-modules-core`)"
   - "ExpoRouter (from `../../../node_modules/.pnpm/expo-router@55.0.14_cbc0d450da57ae6299b7a483b2af2b16/node_modules/expo-router/ios`)"
@@ -2497,7 +2501,7 @@ EXTERNAL SOURCES:
   ExpoDomWebView:
     :path: "../../../node_modules/.pnpm/@expo+dom-webview@55.0.6_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_882df4fdea8a9a3c00e3ce2347019ff2/node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
-    :path: "../../../node_modules/.pnpm/expo-file-system@55.0.20_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_f63574942aaf04d2f3ccea2dcfa3b46e/node_modules/expo-file-system/ios"
+    :path: "../../../node_modules/.pnpm/expo-file-system@55.0.24_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_19c7c739a49a30bdfd8ee2efd90c450c/node_modules/expo-file-system/ios"
   ExpoFont:
     :path: "../../../node_modules/.pnpm/expo-font@55.0.8_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metr_dc9730fac7689cfd5ff0e6ae95f83407/node_modules/expo-font/ios"
   ExpoGlassEffect:
@@ -2512,6 +2516,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-linking@55.0.15_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+_5c48a6a75d59934bbf212b5c10eaf246/node_modules/expo-linking/ios"
   ExpoLogBox:
     :path: "../../../node_modules/.pnpm/@expo+log-box@55.0.12_@expo+dom-webview@55.0.6_expo@55.0.24_react-native@0.83.6_@babel+_a6d079b3eb39f9c3b8dd07d1bdd29aaf/node_modules/@expo/log-box"
+  ExpoMediaLibrary:
+    :path: "../../../node_modules/.pnpm/expo-media-library@55.0.19_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-n_5aac1ca88dddc9888c5cff5c6fbf46cf/node_modules/expo-media-library/ios"
   ExpoModulesCore:
     :path: "../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.7.4_@babel+core@7.29.0_react-native@0_a175c5e079b7c8e895ae6211ce0e4087/node_modules/expo-modules-core"
   ExpoModulesJSI:
@@ -2701,7 +2707,7 @@ SPEC CHECKSUMS:
   ExpoCamera: 7926674f9ec1be53bfc83b21c908b7fadd381b32
   ExpoCameraBarcodeScanning: d798baaca89608f387d851649a201f2cf6d0033e
   ExpoDomWebView: b2e9d601f9cb77d3c97da73234e175b64be91928
-  ExpoFileSystem: 5d01aa6678ccde01172351aad5720ee16845ae82
+  ExpoFileSystem: b16ad358dff1dd561f561d8ca0bf22cf00ddad40
   ExpoFont: a7e34a75bdfb703fa07a0e87807f836236608c76
   ExpoGlassEffect: 2dedac2fe817f9b02d0dad29ce0aef7afebc5cd4
   ExpoImage: 74d26278507b0b0d85b1e50562412172603f59eb
@@ -2709,6 +2715,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: d0eb7a0719500d2a43fbf29b6f79e84d70c75ebf
   ExpoLinking: 40f36cf134ea6930f37867858c0643877b865d53
   ExpoLogBox: a678d36477ab9544fe63e0b5328a0716539b6774
+  ExpoMediaLibrary: 00cb64dbf0c193178049cec75ef96ce25a571807
   ExpoModulesCore: 5e1ad569ce7cf8d35c0737585f34cc299fc3f0ca
   ExpoModulesJSI: 964334271fc77832736f66ee1785761cdc778dbe
   ExpoRouter: 0948f6a7c3949e8405099663e55d149408afc021

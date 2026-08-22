@@ -22,10 +22,17 @@ type UiState = 'idle' | 'initiating' | 'failed_paystack' | 'failed_other';
 
 export type PaywallSheetProps = {
   pricing: { amountMinor: number; currency: string; amountDisplay: string };
-  /** Called with the chosen provider when the user taps a payment button.
+  /** Called with the chosen provider when the user taps the primary payment button.
    *  Must return a Promise so the sheet can track in-flight state and catch
    *  errors to map them to user-facing messages. */
   onPay: (provider: 'PAYSTACK' | 'FLUTTERWAVE') => Promise<void>;
+  /**
+   * Optional Flutterwave fallback handler. When provided, the "Try Flutterwave
+   * instead" button is revealed after a PAYSTACK_UNAVAILABLE error. When absent
+   * (e.g. on iOS where Apple IAP is the primary path), the fallback button is
+   * never shown regardless of payment state.
+   */
+  onPayFallback?: () => Promise<void>;
   onDismiss: () => void;
 };
 
@@ -66,12 +73,14 @@ function resolveError(err: unknown): { nextState: UiState; message: string } {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function PaywallSheet({ pricing, onPay, onDismiss }: PaywallSheetProps) {
+export function PaywallSheet({ pricing, onPay, onPayFallback, onDismiss }: PaywallSheetProps) {
   const [uiState, setUiState] = useState<UiState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isInitiating = uiState === 'initiating';
-  const showFlutterwave = uiState === 'failed_paystack';
+  // Flutterwave button is only available when a fallback handler is wired up
+  // (Android/web). On iOS the primary path is Apple IAP and there is no fallback.
+  const showFlutterwave = uiState === 'failed_paystack' && onPayFallback !== undefined;
 
   const handlePay = async (provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
     setUiState('initiating');
@@ -85,6 +94,26 @@ export function PaywallSheet({ pricing, onPay, onDismiss }: PaywallSheetProps) {
         setErrorMsg(ERROR_MESSAGES.ALREADY_UNLOCKED!);
         setUiState('failed_other');
         // Auto-dismiss: room is already unlocked, nothing left to do.
+        setTimeout(onDismiss, 2000);
+        return;
+      }
+      const { nextState, message } = resolveError(err);
+      setUiState(nextState);
+      setErrorMsg(message);
+    }
+  };
+
+  const handlePayFallback = async () => {
+    if (!onPayFallback) return;
+    setUiState('initiating');
+    setErrorMsg(null);
+    try {
+      await onPayFallback();
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'ALREADY_UNLOCKED') {
+        setErrorMsg(ERROR_MESSAGES.ALREADY_UNLOCKED!);
+        setUiState('failed_other');
         setTimeout(onDismiss, 2000);
         return;
       }
@@ -143,7 +172,7 @@ export function PaywallSheet({ pricing, onPay, onDismiss }: PaywallSheetProps) {
             label="Try Flutterwave instead"
             variant="ghost"
             onPress={() => {
-              void handlePay('FLUTTERWAVE');
+              void handlePayFallback();
             }}
             disabled={isInitiating}
           />
