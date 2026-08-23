@@ -77,6 +77,28 @@ describe('render', () => {
     const { queryByText } = renderSheet();
     expect(queryByText('Try Flutterwave instead')).toBeNull();
   });
+
+  it('iapLocalizedPrice overrides amountDisplay when provided', () => {
+    const { getByText, queryByText } = renderSheet({ iapLocalizedPrice: '$4.99' });
+    expect(getByText('$4.99')).toBeTruthy();
+    expect(queryByText('₦1,500.00')).toBeNull();
+  });
+
+  it('amountDisplay shown when iapLocalizedPrice is absent', () => {
+    const { getByText } = renderSheet();
+    expect(getByText('₦1,500.00')).toBeTruthy();
+  });
+
+  it('primaryActionLabel overrides default button text when provided', () => {
+    const { getByText, queryByText } = renderSheet({ primaryActionLabel: 'Unlock Gallery' });
+    expect(getByText('Unlock Gallery')).toBeTruthy();
+    expect(queryByText('Pay with Paystack')).toBeNull();
+  });
+
+  it('default Pay with Paystack button shown when primaryActionLabel is absent', () => {
+    const { getByText } = renderSheet();
+    expect(getByText('Pay with Paystack')).toBeTruthy();
+  });
 });
 
 // ── Interaction tests ─────────────────────────────────────────────────────────
@@ -167,6 +189,18 @@ describe('state machine', () => {
     fireEvent.press(getByText('Pay with Paystack'));
     await waitFor(() => expect(getByText(ERROR_MESSAGES.FLUTTERWAVE_UNAVAILABLE!)).toBeTruthy());
     expect(queryByText('Try Flutterwave instead')).toBeNull();
+  });
+
+  it('USER_CANCELLED: resets to idle without showing an error message', async () => {
+    const onPay = jest.fn().mockRejectedValue({ code: 'USER_CANCELLED' });
+    const { getByText, queryByText } = renderSheet({ onPay });
+
+    fireEvent.press(getByText('Pay with Paystack'));
+    // Wait for the initiating state to resolve (USER_CANCELLED is caught)
+    await waitFor(() => expect(onPay).toHaveBeenCalledTimes(1));
+    // Sheet returns to idle — no error shown, button re-enabled
+    await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());
+    expect(queryByText('Something went wrong. Please try again.')).toBeNull();
   });
 
   it('ALREADY_UNLOCKED: shows message and calls onDismiss after 2 s', async () => {

@@ -1,36 +1,65 @@
 /**
- * Unit tests for AppleIapClient.
+ * Unit tests for AppleIapClient (App Store Server API — Path A).
  *
  * Covers:
- *   - Rule 5: instantiation without APPLE_IAP_SHARED_SECRET does not throw.
- *   - T4: When Apple production URL returns status 21007 (sandbox receipt),
- *         the client automatically retries against the sandbox URL.
- *   - Happy path: status 0 with receipt data is returned correctly.
- *   - Error cases: HTTP failure and Apple non-zero non-21007 status.
+ *   - Rule 5: instantiation without env vars does not throw.
+ *   - T4-new: production HTTP 404 triggers sandbox retry.
+ *   - Both production and sandbox 404 → APPLE_TRANSACTION_NOT_FOUND.
+ *   - Non-404 HTTP error → APPLE_IAP_HTTP_ERROR.
+ *   - Network failure → APPLE_IAP_NETWORK_ERROR.
+ *   - Missing signedTransactionInfo → APPLE_IAP_RESPONSE_MISSING.
+ *   - Malformed JWS → APPLE_JWS_MALFORMED.
+ *   - Happy path: JWS decoded and structured result returned correctly.
+ *   - Authorization header carries a Bearer JWT in header.payload.sig format.
+ *
+ * A real P-256 key pair is generated in beforeAll so buildJwt() can sign without
+ * hardcoded key material in source. fetch is always mocked so Apple never receives
+ * the test JWT.
  */
 
+import * as crypto from 'crypto';
 import { UnprocessableEntityException } from '@nestjs/common';
-import { AppleIapClient } from '../apple-iap.client';
+import { AppleIapClient, AppleTransactionInfo } from '../apple-iap.client';
 
-const RECEIPT_DATA = 'base64-receipt';
-const SHARED_SECRET = 'test-shared-secret';
+// ── Test key generation ───────────────────────────────────────────────────────
 
-const PRODUCTION_URL = 'https://buy.itunes.apple.com/verifyReceipt';
-const SANDBOX_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
+let testPrivateKeyPem: string;
 
-function makeSuccessResponse(productId = 'Tier1', txnId = 'txn-001') {
+beforeAll(() => {
+  const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  testPrivateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+});
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const TRANSACTION_ID = 'apple-txn-00001';
+const PRODUCTION_URL = `https://api.storekit.apple.com/inApps/v1/transactions/${TRANSACTION_ID}`;
+const SANDBOX_URL = `https://api.storekit-sandbox.apple.com/inApps/v1/transactions/${TRANSACTION_ID}`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function makeTransactionPayload(
+  overrides: Partial<AppleTransactionInfo> = {},
+): AppleTransactionInfo {
   return {
-    status: 0,
-    receipt: {
-      in_app: [
-        {
-          product_id: productId,
-          transaction_id: txnId,
-          original_transaction_id: txnId,
-        },
-      ],
-    },
+    transactionId: TRANSACTION_ID,
+    originalTransactionId: 'orig-txn-001',
+    productId: 'Tier1',
+    type: 'Non-Consumable',
+    environment: 'Production',
+    bundleId: 'com.sher.test',
+    ...overrides,
   };
+}
+
+/**
+ * Build a fake JWS compact string with a controlled payload.
+ * The client does not verify the JWS signature, so 'fakesig' is acceptable in tests.
+ */
+function makeSignedTransactionInfo(payload: object): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'ES256' })).toString('base64url');
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${header}.${payloadB64}.fakesig`;
 }
 
 function makeFetchMock(
@@ -47,110 +76,200 @@ function makeFetchMock(
   });
 }
 
+function setupEnv() {
+  process.env['APPLE_APP_STORE_CONNECT_KEY_ID'] = 'test-key-id';
+  process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'] = 'test-issuer-id';
+  process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY'] = testPrivateKeyPem;
+  process.env['APPLE_APP_BUNDLE_ID'] = 'com.sher.test';
+}
+
+function clearEnv() {
+  delete process.env['APPLE_APP_STORE_CONNECT_KEY_ID'];
+  delete process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'];
+  delete process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY'];
+  delete process.env['APPLE_APP_BUNDLE_ID'];
+  jest.restoreAllMocks();
+}
+
+// ── Rule 5 — instantiation ────────────────────────────────────────────────────
+
 describe('Rule 5 — instantiation', () => {
-  it('does not throw when APPLE_IAP_SHARED_SECRET is absent', () => {
+  it('does not throw when env vars are absent', () => {
     expect(() => new AppleIapClient()).not.toThrow();
   });
 });
 
-describe('T4 — sandbox fallback on status 21007', () => {
-  beforeEach(() => {
-    process.env['APPLE_IAP_SHARED_SECRET'] = SHARED_SECRET;
-  });
+// ── T4-new: sandbox fallback on 404 ──────────────────────────────────────────
 
-  afterEach(() => {
-    delete process.env['APPLE_IAP_SHARED_SECRET'];
-    jest.restoreAllMocks();
-  });
+describe('T4-new: sandbox fallback on HTTP 404', () => {
+  beforeEach(setupEnv);
+  afterEach(clearEnv);
 
-  it('retries the sandbox URL when production returns status 21007', async () => {
+  it('retries sandbox when production returns HTTP 404', async () => {
+    const txnPayload = makeTransactionPayload({ environment: 'Sandbox' });
     const mockFetch = makeFetchMock([
-      // First call: production URL → 21007
-      { ok: true, status: 200, body: { status: 21007 } },
-      // Second call: sandbox URL → success
-      { ok: true, status: 200, body: makeSuccessResponse() },
+      { ok: false, status: 404, body: { errorCode: 4040010 } },
+      {
+        ok: true,
+        status: 200,
+        body: { signedTransactionInfo: makeSignedTransactionInfo(txnPayload) },
+      },
     ]);
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
 
     const client = new AppleIapClient();
-    const result = await client.verifyReceipt(RECEIPT_DATA);
+    const result = await client.verifyTransaction(TRANSACTION_ID);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch.mock.calls[0][0]).toBe(PRODUCTION_URL);
     expect(mockFetch.mock.calls[1][0]).toBe(SANDBOX_URL);
-    expect(result.status).toBe(0);
-    expect(result.purchases).toHaveLength(1);
-    expect(result.purchases[0]!.productId).toBe('Tier1');
+    expect(result.productId).toBe('Tier1');
+    expect(result.environment).toBe('Sandbox');
   });
 
-  it('does NOT call the sandbox URL when production returns status 0', async () => {
-    const mockFetch = makeFetchMock([{ ok: true, status: 200, body: makeSuccessResponse() }]);
+  it('does NOT call sandbox when production succeeds', async () => {
+    const txnPayload = makeTransactionPayload();
+    const mockFetch = makeFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: { signedTransactionInfo: makeSignedTransactionInfo(txnPayload) },
+      },
+    ]);
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
 
     const client = new AppleIapClient();
-    await client.verifyReceipt(RECEIPT_DATA);
+    await client.verifyTransaction(TRANSACTION_ID);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch.mock.calls[0][0]).toBe(PRODUCTION_URL);
   });
-});
 
-describe('purchase aggregation', () => {
-  beforeEach(() => {
-    process.env['APPLE_IAP_SHARED_SECRET'] = SHARED_SECRET;
-  });
-
-  afterEach(() => {
-    delete process.env['APPLE_IAP_SHARED_SECRET'];
-    jest.restoreAllMocks();
-  });
-
-  it('collects purchases from both receipt.in_app and latest_receipt_info, deduplicating by transactionId', async () => {
-    const body = {
-      status: 0,
-      receipt: {
-        in_app: [
-          { product_id: 'Tier1', transaction_id: 'txn-1', original_transaction_id: 'txn-1' },
-          { product_id: 'Tier2', transaction_id: 'txn-2', original_transaction_id: 'txn-2' },
-        ],
-      },
-      latest_receipt_info: [
-        // txn-1 is a duplicate — should appear only once
-        { product_id: 'Tier1', transaction_id: 'txn-1', original_transaction_id: 'txn-1' },
-        { product_id: 'ExtendStorage', transaction_id: 'txn-3', original_transaction_id: 'txn-0' },
-      ],
-    };
-
-    const mockFetch = makeFetchMock([{ ok: true, status: 200, body }]);
+  it('throws APPLE_TRANSACTION_NOT_FOUND when both production and sandbox return 404', async () => {
+    const mockFetch = makeFetchMock([
+      { ok: false, status: 404, body: {} },
+      { ok: false, status: 404, body: {} },
+    ]);
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
 
     const client = new AppleIapClient();
-    const result = await client.verifyReceipt(RECEIPT_DATA);
-
-    // txn-1, txn-2, txn-3 — no duplicates
-    expect(result.purchases).toHaveLength(3);
-    const ids = result.purchases.map((p) => p.transactionId);
-    expect(ids).toContain('txn-1');
-    expect(ids).toContain('txn-2');
-    expect(ids).toContain('txn-3');
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toMatchObject({
+      response: { code: 'APPLE_TRANSACTION_NOT_FOUND' },
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+});
 
-  it('throws APPLE_IAP_NETWORK_ERROR when fetch rejects', async () => {
-    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('Connection refused'));
+// ── Happy path ────────────────────────────────────────────────────────────────
+
+describe('happy path — decode and return transaction info', () => {
+  beforeEach(setupEnv);
+  afterEach(clearEnv);
+
+  it('decodes signedTransactionInfo and returns structured AppleTransactionInfo', async () => {
+    const txnPayload = makeTransactionPayload({
+      transactionId: TRANSACTION_ID,
+      originalTransactionId: 'orig-001',
+      productId: 'Tier2',
+      type: 'Non-Consumable',
+      environment: 'Production',
+      bundleId: 'com.sher.app',
+    });
+    const mockFetch = makeFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: { signedTransactionInfo: makeSignedTransactionInfo(txnPayload) },
+      },
+    ]);
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
 
     const client = new AppleIapClient();
-    await expect(client.verifyReceipt(RECEIPT_DATA)).rejects.toBeInstanceOf(
-      UnprocessableEntityException,
-    );
+    const result = await client.verifyTransaction(TRANSACTION_ID);
+
+    expect(result.transactionId).toBe(TRANSACTION_ID);
+    expect(result.originalTransactionId).toBe('orig-001');
+    expect(result.productId).toBe('Tier2');
+    expect(result.type).toBe('Non-Consumable');
+    expect(result.environment).toBe('Production');
+    expect(result.bundleId).toBe('com.sher.app');
   });
 
-  it('throws APPLE_IAP_HTTP_ERROR when Apple responds with non-OK HTTP status', async () => {
+  it('sends Authorization header with a Bearer JWT in three-segment format', async () => {
+    const txnPayload = makeTransactionPayload();
+    const mockFetch = makeFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: { signedTransactionInfo: makeSignedTransactionInfo(txnPayload) },
+      },
+    ]);
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
+
+    const client = new AppleIapClient();
+    await client.verifyTransaction(TRANSACTION_ID);
+
+    const [, init] = mockFetch.mock.calls[0] as unknown[] as [string, RequestInit];
+    const authHeader = (init.headers as Record<string, string>)['Authorization'];
+    // JWT has three base64url segments separated by dots.
+    expect(authHeader).toMatch(/^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  });
+});
+
+// ── Error cases ───────────────────────────────────────────────────────────────
+
+describe('error cases', () => {
+  beforeEach(setupEnv);
+  afterEach(clearEnv);
+
+  it('throws APPLE_IAP_HTTP_ERROR on non-404 HTTP failure', async () => {
     const mockFetch = makeFetchMock([{ ok: false, status: 503, body: {} }]);
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
 
     const client = new AppleIapClient();
-    await expect(client.verifyReceipt(RECEIPT_DATA)).rejects.toBeInstanceOf(
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toMatchObject({
+      response: { code: 'APPLE_IAP_HTTP_ERROR' },
+    });
+  });
+
+  it('throws APPLE_IAP_NETWORK_ERROR when fetch rejects', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toMatchObject({
+      response: { code: 'APPLE_IAP_NETWORK_ERROR' },
+    });
+  });
+
+  it('throws APPLE_IAP_HTTP_ERROR as UnprocessableEntityException', async () => {
+    const mockFetch = makeFetchMock([{ ok: false, status: 401, body: {} }]);
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
+  });
+
+  it('throws APPLE_IAP_RESPONSE_MISSING when Apple omits signedTransactionInfo', async () => {
+    const mockFetch = makeFetchMock([{ ok: true, status: 200, body: {} }]);
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toMatchObject({
+      response: { code: 'APPLE_IAP_RESPONSE_MISSING' },
+    });
+  });
+
+  it('throws APPLE_JWS_MALFORMED when signedTransactionInfo is not a three-part JWS', async () => {
+    const mockFetch = makeFetchMock([
+      { ok: true, status: 200, body: { signedTransactionInfo: 'not-a-jws' } },
+    ]);
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch as never);
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction(TRANSACTION_ID)).rejects.toMatchObject({
+      response: { code: 'APPLE_JWS_MALFORMED' },
+    });
   });
 });

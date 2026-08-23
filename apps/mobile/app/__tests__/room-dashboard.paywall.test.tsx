@@ -23,6 +23,24 @@
 const mockRouterPush = jest.fn();
 const mockRouterReplace = jest.fn();
 
+// Mock expo-iap (native module — not available in Jest)
+jest.mock('expo-iap', () => ({
+  initConnection: jest.fn().mockResolvedValue(true),
+  endConnection: jest.fn().mockResolvedValue(true),
+  fetchProducts: jest.fn().mockResolvedValue([]),
+  requestPurchase: jest.fn().mockResolvedValue(null),
+  finishTransaction: jest.fn().mockResolvedValue(undefined),
+  purchaseUpdatedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  purchaseErrorListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  ErrorCode: { UserCancelled: 'user-cancelled' },
+}));
+
+// Mock the payment provider so tests control what initiateUnlock returns.
+const mockInitiateUnlock = jest.fn();
+jest.mock('../../lib/payment-provider', () => ({
+  getPaymentProvider: jest.fn(() => ({ initiateUnlock: mockInitiateUnlock })),
+}));
+
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: mockRouterPush, replace: mockRouterReplace, back: jest.fn() })),
   useLocalSearchParams: jest.fn(() => ({ id: 'room-test-1' })),
@@ -244,6 +262,12 @@ beforeEach(() => {
     amountDisplay: '₦7,000.00',
     provider: 'PAYSTACK',
   });
+  mockInitiateUnlock.mockResolvedValue({
+    webViewTarget: {
+      providerRef: 'sher_room_ref',
+      authorizationUrl: 'https://checkout.paystack.com/room',
+    },
+  });
 
   (subscribeToRoom as jest.Mock).mockImplementation((_roomId, handlers) => {
     capturedHandlers = handlers;
@@ -348,12 +372,12 @@ describe('LockedGalleryPlaceholder', () => {
 // ── Navigation tests ──────────────────────────────────────────────────────────
 
 describe('navigation', () => {
-  it('tapping Pay with Paystack calls initiateRoomUnlock and navigates to /checkout with purpose=ROOM_UNLOCK', async () => {
+  it('tapping Unlock Gallery calls initiateUnlock and navigates to /checkout with purpose=ROOM_UNLOCK', async () => {
     const qc = makeQc();
     const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());
+    await waitFor(() => expect(getByText('Unlock Gallery')).toBeTruthy());
 
-    fireEvent.press(getByText('Pay with Paystack'));
+    fireEvent.press(getByText('Unlock Gallery'));
 
     await waitFor(() =>
       expect(mockRouterPush).toHaveBeenCalledWith({
@@ -366,7 +390,10 @@ describe('navigation', () => {
         },
       }),
     );
-    expect(mockInitiateRoomUnlock).toHaveBeenCalledWith({ provider: 'PAYSTACK' });
+    expect(mockInitiateUnlock).toHaveBeenCalledWith({
+      roomId: ROOM_ID,
+      iapProductId: null,
+    });
   });
 });
 
@@ -451,13 +478,17 @@ describe('photoCount prop', () => {
 // ── Error path ────────────────────────────────────────────────────────────────
 
 describe('error path', () => {
-  it('PAYSTACK_UNAVAILABLE error → PaywallSheet shows Flutterwave fallback button', async () => {
-    mockInitiateRoomUnlock.mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
+  it('PAYSTACK_UNAVAILABLE error → error message shown; no Flutterwave button on iOS', async () => {
+    mockInitiateUnlock.mockRejectedValue({ code: 'PAYSTACK_UNAVAILABLE' });
     const qc = makeQc();
-    const { getByText } = await renderAndWaitForSubscription(qc);
-    await waitFor(() => expect(getByText('Pay with Paystack')).toBeTruthy());
+    const { getByText, queryByText } = await renderAndWaitForSubscription(qc);
+    await waitFor(() => expect(getByText('Unlock Gallery')).toBeTruthy());
 
-    fireEvent.press(getByText('Pay with Paystack'));
-    await waitFor(() => expect(getByText('Try Flutterwave instead')).toBeTruthy());
+    fireEvent.press(getByText('Unlock Gallery'));
+    await waitFor(() =>
+      expect(getByText("Couldn't reach Paystack. Try Flutterwave instead.")).toBeTruthy(),
+    );
+    // On iOS, onPayFallback is not provided → fallback button must never appear.
+    expect(queryByText('Try Flutterwave instead')).toBeNull();
   });
 });

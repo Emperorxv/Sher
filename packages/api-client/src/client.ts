@@ -229,6 +229,24 @@ export function createApiClient(opts: ApiClientOptions) {
 
     /** GET /v1/payments — full payment history for the authenticated user */
     getPaymentHistory: () => rawFetch<PaymentHistoryItemDto[]>('/v1/payments'),
+
+    /**
+     * POST /v1/payments/apple/verify — verify a Non-Consumable room-unlock purchase.
+     * iOS client sends { roomId, productId, transactionId }; server fetches the
+     * transaction from Apple's App Store Server API directly.
+     */
+    verifyAppleRoomUnlock: (dto: {
+      roomId: string;
+      productId: 'Tier1' | 'Tier2' | 'Tier3';
+      transactionId: string;
+    }) => rawFetch<void>('/v1/payments/apple/verify', { method: 'POST', body: dto }),
+
+    /**
+     * POST /v1/payments/apple/verify-storage — verify an ExtendStorage subscription.
+     * iOS client sends { roomId, transactionId }; server fetches and verifies directly.
+     */
+    verifyAppleStorage: (dto: { roomId: string; transactionId: string }) =>
+      rawFetch<void>('/v1/payments/apple/verify-storage', { method: 'POST', body: dto }),
   };
 
   // ─── Photos endpoints ────────────────────────────────────────────────────────

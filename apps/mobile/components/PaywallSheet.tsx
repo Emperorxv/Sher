@@ -22,6 +22,17 @@ type UiState = 'idle' | 'initiating' | 'failed_paystack' | 'failed_other';
 
 export type PaywallSheetProps = {
   pricing: { amountMinor: number; currency: string; amountDisplay: string };
+  /**
+   * Overrides the displayed amount with the App Store localized price.
+   * On iOS, expo-iap provides this from the product's `displayPrice` field.
+   * When absent, `pricing.amountDisplay` is shown.
+   */
+  iapLocalizedPrice?: string;
+  /**
+   * Overrides the primary payment button label.
+   * Pass 'Unlock Gallery' on iOS (Apple IAP); defaults to 'Pay with Paystack'.
+   */
+  primaryActionLabel?: string;
   /** Called with the chosen provider when the user taps the primary payment button.
    *  Must return a Promise so the sheet can track in-flight state and catch
    *  errors to map them to user-facing messages. */
@@ -73,7 +84,14 @@ function resolveError(err: unknown): { nextState: UiState; message: string } {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function PaywallSheet({ pricing, onPay, onPayFallback, onDismiss }: PaywallSheetProps) {
+export function PaywallSheet({
+  pricing,
+  iapLocalizedPrice,
+  primaryActionLabel,
+  onPay,
+  onPayFallback,
+  onDismiss,
+}: PaywallSheetProps) {
   const [uiState, setUiState] = useState<UiState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -90,6 +108,12 @@ export function PaywallSheet({ pricing, onPay, onPayFallback, onDismiss }: Paywa
       // Success: parent is responsible for navigation (checkout WebView — commit 14).
     } catch (err) {
       const code = (err as { code?: string })?.code;
+      if (code === 'USER_CANCELLED') {
+        // Apple IAP sheet was dismissed — return to idle without showing an error.
+        setUiState('idle');
+        setErrorMsg(null);
+        return;
+      }
       if (code === 'ALREADY_UNLOCKED') {
         setErrorMsg(ERROR_MESSAGES.ALREADY_UNLOCKED!);
         setUiState('failed_other');
@@ -139,7 +163,7 @@ export function PaywallSheet({ pricing, onPay, onPayFallback, onDismiss }: Paywa
           🔒
         </Text>
 
-        <Text style={styles.amount}>{pricing.amountDisplay}</Text>
+        <Text style={styles.amount}>{iapLocalizedPrice ?? pricing.amountDisplay}</Text>
 
         <Text style={styles.title}>{COPY.title}</Text>
         <Text style={styles.subtitle}>{COPY.subtitle}</Text>
@@ -159,7 +183,7 @@ export function PaywallSheet({ pricing, onPay, onPayFallback, onDismiss }: Paywa
         ) : null}
 
         <Button
-          label="Pay with Paystack"
+          label={primaryActionLabel ?? 'Pay with Paystack'}
           onPress={() => {
             void handlePay('PAYSTACK');
           }}

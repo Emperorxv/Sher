@@ -11,6 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -19,6 +20,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { initConnection, endConnection, fetchProducts } from 'expo-iap';
 import QRCode from 'react-native-qrcode-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@sher/shared-types';
@@ -31,6 +33,7 @@ import {
 } from '../../../components';
 import { useRoom, useRoomMembers, useEndRoom, useRemoveMember, roomKeys } from '../../../lib/rooms';
 import { useUnlockStatus, useInitiateRoomUnlock } from '../../../lib/payments';
+import { getPaymentProvider } from '../../../lib/payment-provider';
 import { photoKeys, useDeletePhoto } from '../../../lib/photos';
 import { connectRoomSocket, disconnectRoomSocket, subscribeToRoom } from '../../../lib/socket';
 import { tokenStore } from '../../../lib/token-store';
@@ -127,6 +130,7 @@ export default function RoomDashboard() {
 
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paymentFailedMsg, setPaymentFailedMsg] = useState<string | null>(null);
+  const [iapLocalizedPrice, setIapLocalizedPrice] = useState<string | undefined>(undefined);
   const autoOpened = useRef(false);
 
   // ── Report member state ────────────────────────────────────────────────────
@@ -160,6 +164,31 @@ export default function RoomDashboard() {
       setPaywallOpen(true);
     }
   }, [showPaywall]);
+
+  // ── Fetch App Store localized price for IAP products (iOS only) ────────────
+
+  useEffect(() => {
+    const productId = unlockStatus?.iapProductId;
+    if (Platform.OS !== 'ios' || !productId) return;
+
+    let cancelled = false;
+    initConnection()
+      .then(() => fetchProducts({ skus: [productId] }))
+      .then((products) => {
+        const product = products?.[0];
+        if (!cancelled && product) {
+          setIapLocalizedPrice(product.displayPrice);
+        }
+      })
+      .catch(() => undefined) // fall back to pricing.amountDisplay
+      .finally(() => {
+        void endConnection();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [unlockStatus?.iapProductId]);
 
   // ── Socket.IO subscription for live updates ────────────────────────────────
 
@@ -230,20 +259,33 @@ export default function RoomDashboard() {
   // ── Payment handlers ───────────────────────────────────────────────────────
 
   const handlePay = useCallback(
-    async (provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
-      // Let errors propagate — PaywallSheet catches and maps them
-      const result = await initiateRoomUnlock.mutateAsync({ provider });
-      router.push({
-        pathname: '/checkout/[paymentRef]',
-        params: {
-          paymentRef: result.providerRef,
-          roomId: id!,
-          authorizationUrl: result.authorizationUrl,
-          purpose: 'ROOM_UNLOCK',
-        },
+    async (_provider: 'PAYSTACK' | 'FLUTTERWAVE') => {
+      // On iOS: AppleIAPProvider shows the native purchase sheet and verifies
+      //         with the backend; resolves with webViewTarget: null on success.
+      // On Android/web: PaystackProvider calls the unlock API and returns a
+      //         webViewTarget with the authorization URL for the checkout WebView.
+      const paymentProvider = getPaymentProvider();
+      const result = await paymentProvider.initiateUnlock({
+        roomId: id!,
+        iapProductId: unlockStatus?.iapProductId ?? null,
       });
+      if (result.webViewTarget) {
+        router.push({
+          pathname: '/checkout/[paymentRef]',
+          params: {
+            paymentRef: result.webViewTarget.providerRef,
+            roomId: id!,
+            authorizationUrl: result.webViewTarget.authorizationUrl,
+            purpose: 'ROOM_UNLOCK',
+          },
+        });
+      } else {
+        // Apple IAP: purchase is complete — refresh unlock status and close paywall.
+        void qc.invalidateQueries({ queryKey: roomKeys.unlockStatus(id!) });
+        setPaywallOpen(false);
+      }
     },
-    [initiateRoomUnlock, id, router],
+    [id, router, qc, unlockStatus?.iapProductId],
   );
 
   // Flutterwave fallback — revealed by PaywallSheet after a PAYSTACK_UNAVAILABLE error.
@@ -470,8 +512,11 @@ export default function RoomDashboard() {
       {paywallOpen && (
         <PaywallSheet
           pricing={paywallPricing}
+          iapLocalizedPrice={iapLocalizedPrice}
+          primaryActionLabel={Platform.OS === 'ios' ? 'Unlock Gallery' : undefined}
           onPay={handlePay}
-          onPayFallback={handlePayFallback}
+          // Flutterwave fallback only available on Android/web (not iOS — Apple IAP path).
+          onPayFallback={Platform.OS === 'ios' ? undefined : handlePayFallback}
           onDismiss={() => setPaywallOpen(false)}
         />
       )}

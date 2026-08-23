@@ -1,13 +1,14 @@
 /**
- * Unit tests for AppleIapService.
+ * Unit tests for AppleIapService (App Store Server API — Path A).
  *
  * Covers:
- *   T2: Valid receipt → paymentsService.applyVerifySuccess called once.
+ *   T2: Valid Apple transaction → paymentsService.applyVerifySuccess called once.
  *   T3: Duplicate transactionId → idempotent no-op (applyVerifySuccess not called).
- *   T5: Product ID mismatch for room tier → rejected before Apple is called.
- *   T4 (client-level): Sandbox-fallback tested in apple-iap.client.spec.ts.
+ *   T5: Product ID mismatch for room tier (service-side check) → PRODUCT_ID_MISMATCH.
+ *   Apple product mismatch: Apple returns unexpected productId → APPLE_PRODUCT_MISMATCH.
  *   T-retention: verifyStorageExtension creates RetentionSubscription with APPLE_IAP.
  *   T-non-member: non-member rejected before Apple call.
+ *   Guard checks: ROOM_NOT_FOUND, ROOM_STILL_ACTIVE, ALREADY_UNLOCKED, ACCESS_LOCKED.
  */
 
 import {
@@ -17,6 +18,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PaymentPurpose, PaymentStatus } from '@prisma/client';
+import { AppleTransactionInfo } from '../providers/apple-iap.client';
 import { AppleIapService } from '../apple-iap.service';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -27,7 +29,6 @@ const MEMBERSHIP_ID = 'membership-1';
 const PAYMENT_ID = 'payment-new-1';
 const TRANSACTION_ID = 'apple-txn-100001';
 const ORIGINAL_TXN_ID = 'apple-orig-txn-1';
-const RECEIPT_DATA = 'base64-encoded-receipt-data';
 
 const ENDED_ROOM_10_MEMBERS = {
   id: ROOM_ID,
@@ -79,26 +80,19 @@ const CREATED_PAYMENT = {
   fxLockedRate: null,
 };
 
-const APPLE_SUCCESS_RESULT = {
-  status: 0,
-  purchases: [
-    {
-      productId: 'Tier1',
-      transactionId: TRANSACTION_ID,
-      originalTransactionId: ORIGINAL_TXN_ID,
-    },
-  ],
+const APPLE_TRANSACTION_INFO: AppleTransactionInfo = {
+  transactionId: TRANSACTION_ID,
+  originalTransactionId: ORIGINAL_TXN_ID,
+  productId: 'Tier1',
+  type: 'Non-Consumable',
+  environment: 'Production',
+  bundleId: 'com.sher.app',
 };
 
-const APPLE_STORAGE_SUCCESS_RESULT = {
-  status: 0,
-  purchases: [
-    {
-      productId: 'ExtendStorage',
-      transactionId: TRANSACTION_ID,
-      originalTransactionId: ORIGINAL_TXN_ID,
-    },
-  ],
+const APPLE_STORAGE_TRANSACTION_INFO: AppleTransactionInfo = {
+  ...APPLE_TRANSACTION_INFO,
+  productId: 'ExtendStorage',
+  type: 'Auto-Renewable Subscription',
 };
 
 // ── Mock factories ────────────────────────────────────────────────────────────
@@ -144,8 +138,8 @@ function makePaymentsService() {
   return { applyVerifySuccess: jest.fn().mockResolvedValue(undefined) };
 }
 
-function makeAppleClient(result = APPLE_SUCCESS_RESULT) {
-  return { verifyReceipt: jest.fn().mockResolvedValue(result) };
+function makeAppleClient(result: AppleTransactionInfo = APPLE_TRANSACTION_INFO) {
+  return { verifyTransaction: jest.fn().mockResolvedValue(result) };
 }
 
 function makeService(
@@ -173,10 +167,10 @@ function makeService(
 // ── verifyRoomUnlock ──────────────────────────────────────────────────────────
 
 describe('AppleIapService.verifyRoomUnlock', () => {
-  describe('T2 — valid receipt', () => {
+  describe('T2 — valid transaction', () => {
     it('calls applyVerifySuccess exactly once with the created Payment', async () => {
       const { service, payments, prisma } = makeService();
-      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID);
+      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID);
 
       expect(payments.applyVerifySuccess).toHaveBeenCalledTimes(1);
       expect(payments.applyVerifySuccess).toHaveBeenCalledWith(
@@ -194,13 +188,12 @@ describe('AppleIapService.verifyRoomUnlock', () => {
       );
     });
 
-    it('does NOT call Apple verifyReceipt before idempotency check', async () => {
-      // Verifies ordering: idempotency guard fires before the Apple HTTP call.
+    it('does NOT call verifyTransaction before idempotency check', async () => {
       const { service, iapClient } = makeService({
         prisma: makePrisma({ existingPayment: { id: 'dup-payment' } }),
       });
-      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID);
-      expect(iapClient.verifyReceipt).not.toHaveBeenCalled();
+      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID);
+      expect(iapClient.verifyTransaction).not.toHaveBeenCalled();
     });
   });
 
@@ -209,7 +202,7 @@ describe('AppleIapService.verifyRoomUnlock', () => {
       const { service, payments } = makeService({
         prisma: makePrisma({ existingPayment: CREATED_PAYMENT }),
       });
-      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID);
+      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID);
       expect(payments.applyVerifySuccess).not.toHaveBeenCalled();
     });
 
@@ -217,31 +210,42 @@ describe('AppleIapService.verifyRoomUnlock', () => {
       const { service, prisma } = makeService({
         prisma: makePrisma({ existingPayment: CREATED_PAYMENT }),
       });
-      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID);
+      await service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID);
       expect(prisma.payment.create).not.toHaveBeenCalled();
     });
   });
 
-  describe('T5 — product ID mismatch', () => {
+  describe('T5 — product ID mismatch (server-side tier check)', () => {
     it('throws PRODUCT_ID_MISMATCH before calling Apple when Tier2 room gets Tier1', async () => {
       const { service, iapClient } = makeService({
         prisma: makePrisma({ room: ENDED_ROOM_20_MEMBERS }),
       });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toMatchObject({ response: { code: 'PRODUCT_ID_MISMATCH' } });
-      expect(iapClient.verifyReceipt).not.toHaveBeenCalled();
+      expect(iapClient.verifyTransaction).not.toHaveBeenCalled();
     });
 
     it('throws PRODUCT_ID_MISMATCH before calling Apple when Tier1 room gets Tier2', async () => {
       const { service, iapClient } = makeService({
-        // 5-member room is Tier1; caller passes Tier2
         prisma: makePrisma({ room: ENDED_ROOM_10_MEMBERS }),
       });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier2', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier2', TRANSACTION_ID),
       ).rejects.toMatchObject({ response: { code: 'PRODUCT_ID_MISMATCH' } });
-      expect(iapClient.verifyReceipt).not.toHaveBeenCalled();
+      expect(iapClient.verifyTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Apple product cross-check', () => {
+    it('throws APPLE_PRODUCT_MISMATCH when Apple returns an unexpected productId', async () => {
+      // Apple says ExtendStorage but we expected Tier1 — should reject.
+      const { service } = makeService({
+        iapClient: makeAppleClient({ ...APPLE_TRANSACTION_INFO, productId: 'ExtendStorage' }),
+      });
+      await expect(
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
+      ).rejects.toMatchObject({ response: { code: 'APPLE_PRODUCT_MISMATCH' } });
     });
   });
 
@@ -249,7 +253,7 @@ describe('AppleIapService.verifyRoomUnlock', () => {
     it('throws ROOM_NOT_FOUND when room does not exist', async () => {
       const { service } = makeService({ prisma: makePrisma({ room: null }) });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -258,7 +262,7 @@ describe('AppleIapService.verifyRoomUnlock', () => {
         prisma: makePrisma({ room: { ...ENDED_ROOM_10_MEMBERS, status: 'ACTIVE' } }),
       });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
@@ -269,37 +273,29 @@ describe('AppleIapService.verifyRoomUnlock', () => {
         }),
       });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('throws NOT_MEMBER when caller has no membership', async () => {
       const { service } = makeService({ prisma: makePrisma({ membership: null }) });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws APPLE_RECEIPT_INVALID when Apple returns non-zero status', async () => {
+    it('propagates errors thrown by verifyTransaction (e.g. APPLE_TRANSACTION_NOT_FOUND)', async () => {
       const { service } = makeService({
-        iapClient: makeAppleClient({ status: 21004, purchases: [] }),
+        iapClient: {
+          verifyTransaction: jest
+            .fn()
+            .mockRejectedValue(
+              new UnprocessableEntityException({ code: 'APPLE_TRANSACTION_NOT_FOUND' }),
+            ),
+        },
       });
       await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    });
-
-    it('throws APPLE_TRANSACTION_NOT_FOUND when receipt has no matching purchase', async () => {
-      const { service } = makeService({
-        iapClient: makeAppleClient({
-          status: 0,
-          purchases: [
-            { productId: 'Tier1', transactionId: 'OTHER-TXN', originalTransactionId: 'x' },
-          ],
-        }),
-      });
-      await expect(
-        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', RECEIPT_DATA, TRANSACTION_ID),
+        service.verifyRoomUnlock(CALLER_ID, ROOM_ID, 'Tier1', TRANSACTION_ID),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
@@ -308,11 +304,11 @@ describe('AppleIapService.verifyRoomUnlock', () => {
 // ── verifyStorageExtension ────────────────────────────────────────────────────
 
 describe('AppleIapService.verifyStorageExtension', () => {
-  it('calls applyVerifySuccess and creates RetentionSubscription with APPLE_IAP', async () => {
+  it('T-retention: calls applyVerifySuccess and creates RetentionSubscription with APPLE_IAP', async () => {
     const { service, payments, prisma } = makeService({
-      iapClient: makeAppleClient(APPLE_STORAGE_SUCCESS_RESULT),
+      iapClient: makeAppleClient(APPLE_STORAGE_TRANSACTION_INFO),
     });
-    await service.verifyStorageExtension(CALLER_ID, ROOM_ID, RECEIPT_DATA, TRANSACTION_ID);
+    await service.verifyStorageExtension(CALLER_ID, ROOM_ID, TRANSACTION_ID);
 
     expect(payments.applyVerifySuccess).toHaveBeenCalledTimes(1);
     expect(prisma.retentionSubscription.create).toHaveBeenCalledWith(
@@ -329,19 +325,28 @@ describe('AppleIapService.verifyStorageExtension', () => {
   it('is idempotent — no-op when transactionId already processed', async () => {
     const { service, payments } = makeService({
       prisma: makePrisma({ existingPayment: CREATED_PAYMENT }),
-      iapClient: makeAppleClient(APPLE_STORAGE_SUCCESS_RESULT),
+      iapClient: makeAppleClient(APPLE_STORAGE_TRANSACTION_INFO),
     });
-    await service.verifyStorageExtension(CALLER_ID, ROOM_ID, RECEIPT_DATA, TRANSACTION_ID);
+    await service.verifyStorageExtension(CALLER_ID, ROOM_ID, TRANSACTION_ID);
     expect(payments.applyVerifySuccess).not.toHaveBeenCalled();
   });
 
   it('throws ACCESS_LOCKED when membership is still LOCKED', async () => {
     const { service } = makeService({
       prisma: makePrisma({ membership: LOCKED_MEMBERSHIP }),
-      iapClient: makeAppleClient(APPLE_STORAGE_SUCCESS_RESULT),
+      iapClient: makeAppleClient(APPLE_STORAGE_TRANSACTION_INFO),
     });
     await expect(
-      service.verifyStorageExtension(CALLER_ID, ROOM_ID, RECEIPT_DATA, TRANSACTION_ID),
+      service.verifyStorageExtension(CALLER_ID, ROOM_ID, TRANSACTION_ID),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('throws APPLE_PRODUCT_MISMATCH when Apple returns a non-storage productId', async () => {
+    const { service } = makeService({
+      iapClient: makeAppleClient({ ...APPLE_TRANSACTION_INFO, productId: 'Tier1' }),
+    });
+    await expect(
+      service.verifyStorageExtension(CALLER_ID, ROOM_ID, TRANSACTION_ID),
+    ).rejects.toMatchObject({ response: { code: 'APPLE_PRODUCT_MISMATCH' } });
   });
 });

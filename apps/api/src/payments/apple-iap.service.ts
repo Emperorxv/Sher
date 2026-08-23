@@ -1,5 +1,5 @@
 /**
- * AppleIapService — verifies Apple IAP receipts and applies the same internal
+ * AppleIapService — verifies Apple IAP transactions and applies the same internal
  * unlock/retention-extension side-effects as the Paystack/Flutterwave webhook paths.
  *
  * Two operations are supported:
@@ -8,10 +8,14 @@
  *   verifyStorageExtension  — verifies an Auto-Renewable Subscription purchase
  *                             (ExtendStorage) and extends room retention.
  *
- * Idempotency: Apple transactionId is stored as Payment.providerRef (unique).
+ * Verification uses Apple's App Store Server API (Path A): the server fetches the
+ * transaction directly using the transactionId supplied by the iOS client. No receipt
+ * data is sent from the client.
+ *
+ * Idempotency: Apple transactionId is stored as Payment.providerRef (unique constraint).
  * Calling either endpoint twice with the same transactionId is a silent no-op.
  *
- * Apple's shared secret is read lazily in AppleIapClient (Rule 5).
+ * All Apple env vars are read lazily in AppleIapClient (Rule 5).
  */
 
 import {
@@ -50,7 +54,6 @@ export class AppleIapService {
     callerId: string,
     roomId: string,
     productId: 'Tier1' | 'Tier2' | 'Tier3',
-    receiptData: string,
     transactionId: string,
   ): Promise<void> {
     // Idempotency: Apple transactionId is the providerRef; unique constraint
@@ -87,7 +90,7 @@ export class AppleIapService {
       });
     }
 
-    // Server-side: confirm the product ID matches the tier Apple should charge.
+    // Server-side: confirm the claimed product ID matches the tier Apple should charge.
     const tierIndex = getRoomUnlockTierIndex(room.memberCountAtEnd ?? 1);
     const expectedProductId = TIER_INDEX_TO_PRODUCT_ID[tierIndex];
     if (productId !== expectedProductId) {
@@ -97,22 +100,15 @@ export class AppleIapService {
       });
     }
 
-    // Verify the receipt with Apple (prod → sandbox fallback on 21007).
-    const appleResult = await this.iapClient.verifyReceipt(receiptData);
-    if (appleResult.status !== 0) {
-      throw new UnprocessableEntityException({
-        code: 'APPLE_RECEIPT_INVALID',
-        message: `Apple receipt verification returned status ${appleResult.status}.`,
-      });
-    }
+    // Fetch the transaction from Apple's App Store Server API.
+    // The client throws on any verification failure (network, 4xx, invalid JWS).
+    const transaction = await this.iapClient.verifyTransaction(transactionId);
 
-    const purchase = appleResult.purchases.find(
-      (p) => p.transactionId === transactionId && p.productId === productId,
-    );
-    if (!purchase) {
+    // Cross-check: Apple's transaction must carry the same product ID the client claimed.
+    if (transaction.productId !== productId) {
       throw new UnprocessableEntityException({
-        code: 'APPLE_TRANSACTION_NOT_FOUND',
-        message: 'The specified transaction was not found in the verified receipt.',
+        code: 'APPLE_PRODUCT_MISMATCH',
+        message: `Apple transaction has product '${transaction.productId}', expected '${productId}'.`,
       });
     }
 
@@ -139,7 +135,12 @@ export class AppleIapService {
         currency: quote.currency,
         status: PaymentStatus.PENDING,
         purpose: PaymentPurpose.ROOM_UNLOCK,
-        metadata: { productId, transactionId, purpose: 'ROOM_UNLOCK' },
+        metadata: {
+          productId,
+          transactionId,
+          originalTransactionId: transaction.originalTransactionId,
+          purpose: 'ROOM_UNLOCK',
+        },
       },
     });
 
@@ -158,7 +159,6 @@ export class AppleIapService {
   async verifyStorageExtension(
     callerId: string,
     roomId: string,
-    receiptData: string,
     transactionId: string,
   ): Promise<void> {
     const existing = await this.prisma.payment.findFirst({
@@ -193,21 +193,13 @@ export class AppleIapService {
       });
     }
 
-    const appleResult = await this.iapClient.verifyReceipt(receiptData);
-    if (appleResult.status !== 0) {
-      throw new UnprocessableEntityException({
-        code: 'APPLE_RECEIPT_INVALID',
-        message: `Apple receipt verification returned status ${appleResult.status}.`,
-      });
-    }
+    // Fetch the transaction from Apple's App Store Server API.
+    const transaction = await this.iapClient.verifyTransaction(transactionId);
 
-    const purchase = appleResult.purchases.find(
-      (p) => p.transactionId === transactionId && p.productId === APPLE_IAP_PRODUCT_IDS.STORAGE,
-    );
-    if (!purchase) {
+    if (transaction.productId !== APPLE_IAP_PRODUCT_IDS.STORAGE) {
       throw new UnprocessableEntityException({
-        code: 'APPLE_TRANSACTION_NOT_FOUND',
-        message: 'The ExtendStorage transaction was not found in the verified receipt.',
+        code: 'APPLE_PRODUCT_MISMATCH',
+        message: `Apple transaction has product '${transaction.productId}', expected '${APPLE_IAP_PRODUCT_IDS.STORAGE}'.`,
       });
     }
 
@@ -235,7 +227,7 @@ export class AppleIapService {
         metadata: {
           productId: APPLE_IAP_PRODUCT_IDS.STORAGE,
           transactionId,
-          originalTransactionId: purchase.originalTransactionId,
+          originalTransactionId: transaction.originalTransactionId,
           months: 1,
           purpose: 'RETENTION_EXTENSION',
           willAutoRenew: true,
@@ -245,11 +237,10 @@ export class AppleIapService {
 
     // Apply through the shared success path — extends retentionUntil, creates
     // RetentionWindow, updates room, emits room:retention_extended.
-    // No paystackAuth is passed so applyPaymentSuccess will NOT enqueue BullMQ.
     await this.payments.applyVerifySuccess(payment);
 
-    // Create the Apple-managed subscription record AFTER the retention extension
-    // is confirmed. BullMQ renewal is NOT enqueued — Apple handles recurring billing.
+    // Create the Apple-managed subscription record AFTER retention extension is confirmed.
+    // BullMQ renewal is NOT enqueued — Apple handles recurring billing.
     const expectedNextChargeAt = new Date(
       room.retentionUntil.getTime() + 30 * 24 * 60 * 60 * 1_000,
     );
@@ -258,7 +249,7 @@ export class AppleIapService {
         roomId,
         userId: callerId,
         provider: 'APPLE_IAP',
-        authorizationCode: purchase.originalTransactionId,
+        authorizationCode: transaction.originalTransactionId,
         email: user.email,
         currency: quote.currency,
         amountMinor: quote.amountMinor,

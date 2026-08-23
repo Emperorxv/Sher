@@ -19,9 +19,10 @@ export class AppleIapController {
   /**
    * POST /v1/payments/apple/verify
    *
-   * Called by the iOS client after react-native-iap / expo-iap returns a
-   * successful Non-Consumable purchase (Tier1 / Tier2 / Tier3). Verifies the
-   * receipt with Apple and unlocks the room via the shared success path.
+   * Called by the iOS client after expo-iap returns a successful Non-Consumable
+   * purchase (Tier1/Tier2/Tier3). The server fetches the transaction directly
+   * from Apple's App Store Server API using the transactionId — no receipt data
+   * is needed from the client (Path A verification).
    */
   @Post('verify')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -29,20 +30,15 @@ export class AppleIapController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(createZodPipe(AppleVerifyRoomUnlockSchema)) dto: AppleVerifyRoomUnlockInput,
   ) {
-    return this.appleIap.verifyRoomUnlock(
-      user.id,
-      dto.roomId,
-      dto.productId,
-      dto.receiptData,
-      dto.transactionId,
-    );
+    return this.appleIap.verifyRoomUnlock(user.id, dto.roomId, dto.productId, dto.transactionId);
   }
 
   /**
    * POST /v1/payments/apple/verify-storage
    *
    * Called by the iOS client after a successful ExtendStorage Auto-Renewable
-   * Subscription purchase. Verifies the receipt and extends photo retention.
+   * Subscription purchase. The server fetches and verifies the transaction
+   * directly from Apple's App Store Server API using the transactionId.
    */
   @Post('verify-storage')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -50,11 +46,6 @@ export class AppleIapController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(createZodPipe(AppleVerifyStorageSchema)) dto: AppleVerifyStorageInput,
   ) {
-    return this.appleIap.verifyStorageExtension(
-      user.id,
-      dto.roomId,
-      dto.receiptData,
-      dto.transactionId,
-    );
+    return this.appleIap.verifyStorageExtension(user.id, dto.roomId, dto.transactionId);
   }
 }
