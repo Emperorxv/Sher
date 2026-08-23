@@ -30,3 +30,4 @@ android/app/build/
 # expo
 .expo/
 .expo-shared/
+*.p8
