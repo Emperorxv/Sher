@@ -9,6 +9,10 @@
  *   M5-T4: Non-cancel purchase error → rejects with { code: 'APPLE_PURCHASE_FAILED' }.
  *   M5-T5: Backend verify throws → rejects with the server error.
  *   M5-T6: initConnection + endConnection called for every initiateUnlock invocation.
+ *   M5-T7: endConnection called even when verify fails.
+ *   M5-T8: requestPurchase()'s own rejection with UserCancelled → { code: 'USER_CANCELLED' }
+ *          (regression: iOS native rejects the promise directly without firing the listener).
+ *   M5-T9: requestPurchase()'s own rejection with non-cancel code → APPLE_PURCHASE_FAILED.
  *
  * expo-iap is fully mocked — no native modules needed.
  * apiClient.payments.verifyAppleRoomUnlock is stubbed.
@@ -184,5 +188,38 @@ describe('AppleIAPProvider.initiateUnlock', () => {
 
     await expect(unlockPromise).rejects.toThrow();
     expect(mockEndConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('M5-T8: requestPurchase() own rejection with UserCancelled → USER_CANCELLED (not raw error leak)', async () => {
+    // Regression: on iOS native, requestPurchase() rejects directly for cancellation
+    // WITHOUT firing purchaseErrorListener. The .catch() block must translate the
+    // raw PurchaseError into { code: 'USER_CANCELLED' }, not pass it through.
+    mockRequestPurchase.mockRejectedValueOnce({
+      code: 'user-cancelled',
+      message: 'User cancelled the purchase flow',
+    });
+
+    const provider = new AppleIAPProvider();
+    const unlockPromise = provider.initiateUnlock({ roomId: ROOM_ID, iapProductId: PRODUCT_ID });
+
+    // No listener needs to fire — the promise rejects on its own.
+    await expect(unlockPromise).rejects.toMatchObject({ code: 'USER_CANCELLED' });
+    // The raw expo-iap code must NOT be exposed to callers.
+    await expect(unlockPromise).rejects.not.toMatchObject({ code: 'user-cancelled' });
+    expect(mockVerifyAppleRoomUnlock).not.toHaveBeenCalled();
+    expect(mockFinishTransaction).not.toHaveBeenCalled();
+  });
+
+  it('M5-T9: requestPurchase() own rejection with non-cancel code → APPLE_PURCHASE_FAILED', async () => {
+    mockRequestPurchase.mockRejectedValueOnce({
+      code: 'purchase-error',
+      message: 'Payment declined by Apple',
+    });
+
+    const provider = new AppleIAPProvider();
+    const unlockPromise = provider.initiateUnlock({ roomId: ROOM_ID, iapProductId: PRODUCT_ID });
+
+    await expect(unlockPromise).rejects.toMatchObject({ code: 'APPLE_PURCHASE_FAILED' });
+    expect(mockVerifyAppleRoomUnlock).not.toHaveBeenCalled();
   });
 });

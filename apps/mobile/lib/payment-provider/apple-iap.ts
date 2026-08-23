@@ -91,7 +91,20 @@ export class AppleIAPProvider implements MobilePaymentProvider {
           settled = true;
           purchaseSub.remove();
           errorSub.remove();
-          reject(err);
+          // On iOS native, requestPurchase() rejects directly for cancellation
+          // without firing purchaseErrorListener. Apply the same translation so
+          // both paths converge on { code: 'USER_CANCELLED' }.
+          const code = (err as { code?: string })?.code;
+          if (code === ErrorCode.UserCancelled) {
+            reject({ code: 'USER_CANCELLED' });
+          } else if (code) {
+            reject({
+              code: 'APPLE_PURCHASE_FAILED',
+              message: (err as { message?: string })?.message,
+            });
+          } else {
+            reject(err); // non-canonical JS error — preserve as-is
+          }
         });
       });
     } finally {
