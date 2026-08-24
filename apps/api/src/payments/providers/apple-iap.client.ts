@@ -14,6 +14,7 @@
  * Rule 5: All env vars are read lazily at first call — the constructor never throws.
  */
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 
 const PROD_BASE = 'https://api.storekit.apple.com/inApps/v1/transactions';
@@ -60,9 +61,12 @@ export class AppleIapClient {
   }
 
   private get privateKey(): string {
-    const v = process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY'];
-    if (!v) throw new Error('APPLE_APP_STORE_CONNECT_PRIVATE_KEY is not configured');
-    return v;
+    const keyPath = process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH'];
+    if (!keyPath) throw new Error('APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH is not configured');
+    if (!fs.existsSync(keyPath)) {
+      throw new Error(`APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH file not found: ${keyPath}`);
+    }
+    return fs.readFileSync(keyPath, 'utf-8');
   }
 
   private get bundleId(): string {

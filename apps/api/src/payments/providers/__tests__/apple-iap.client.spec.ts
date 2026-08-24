@@ -18,16 +18,26 @@
  */
 
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { AppleIapClient, AppleTransactionInfo } from '../apple-iap.client';
 
 // ── Test key generation ───────────────────────────────────────────────────────
 
 let testPrivateKeyPem: string;
+let tmpKeyPath: string;
 
 beforeAll(() => {
   const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
   testPrivateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  tmpKeyPath = path.join(os.tmpdir(), 'apple-iap-test-key.p8');
+  fs.writeFileSync(tmpKeyPath, testPrivateKeyPem);
+});
+
+afterAll(() => {
+  if (fs.existsSync(tmpKeyPath)) fs.unlinkSync(tmpKeyPath);
 });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -79,14 +89,14 @@ function makeFetchMock(
 function setupEnv() {
   process.env['APPLE_APP_STORE_CONNECT_KEY_ID'] = 'test-key-id';
   process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'] = 'test-issuer-id';
-  process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY'] = testPrivateKeyPem;
+  process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH'] = tmpKeyPath;
   process.env['APPLE_APP_BUNDLE_ID'] = 'com.sher.test';
 }
 
 function clearEnv() {
   delete process.env['APPLE_APP_STORE_CONNECT_KEY_ID'];
   delete process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'];
-  delete process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY'];
+  delete process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH'];
   delete process.env['APPLE_APP_BUNDLE_ID'];
   jest.restoreAllMocks();
 }
@@ -96,6 +106,39 @@ function clearEnv() {
 describe('Rule 5 — instantiation', () => {
   it('does not throw when env vars are absent', () => {
     expect(() => new AppleIapClient()).not.toThrow();
+  });
+
+  it('throws on first use when APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH is not set', async () => {
+    // Set every other required var — only the path is missing.
+    process.env['APPLE_APP_STORE_CONNECT_KEY_ID'] = 'test-key-id';
+    process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'] = 'test-issuer-id';
+    process.env['APPLE_APP_BUNDLE_ID'] = 'com.sher.test';
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction('txn-xxx')).rejects.toThrow(
+      'APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH is not configured',
+    );
+
+    delete process.env['APPLE_APP_STORE_CONNECT_KEY_ID'];
+    delete process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'];
+    delete process.env['APPLE_APP_BUNDLE_ID'];
+  });
+
+  it('throws on first use when private key file does not exist at the configured path', async () => {
+    process.env['APPLE_APP_STORE_CONNECT_KEY_ID'] = 'test-key-id';
+    process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'] = 'test-issuer-id';
+    process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH'] = '/nonexistent/path/AuthKey.p8';
+    process.env['APPLE_APP_BUNDLE_ID'] = 'com.sher.test';
+
+    const client = new AppleIapClient();
+    await expect(client.verifyTransaction('txn-xxx')).rejects.toThrow(
+      'APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH file not found',
+    );
+
+    delete process.env['APPLE_APP_STORE_CONNECT_KEY_ID'];
+    delete process.env['APPLE_APP_STORE_CONNECT_ISSUER_ID'];
+    delete process.env['APPLE_APP_STORE_CONNECT_PRIVATE_KEY_PATH'];
+    delete process.env['APPLE_APP_BUNDLE_ID'];
   });
 });
 
