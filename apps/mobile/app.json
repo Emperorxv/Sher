@@ -28,7 +28,7 @@
         "backgroundColor": "#FFF8F0"
       },
       "package": "app.sher.mobile",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
     },
     "plugins": [
       "expo-router",
@@ -39,6 +39,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fa05eb1a-51da-45e1-9e80-392edc8db610"
+      }
+    },
+    "owner": "emperorxv"
   }
 }

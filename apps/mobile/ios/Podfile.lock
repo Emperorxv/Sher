@@ -42,6 +42,9 @@ PODS:
     - ExpoModulesCore
   - ExpoGlassEffect (55.0.11):
     - ExpoModulesCore
+  - ExpoIap (5.3.2):
+    - ExpoModulesCore
+    - openiap (= 3.2.1)
   - ExpoImage (55.0.10):
     - ExpoModulesCore
     - libavif/libdav1d
@@ -167,6 +170,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - openiap (3.2.1)
   - RCTDeprecation (0.83.6)
   - RCTRequired (0.83.6)
   - RCTSwiftUI (0.83.6)
@@ -2377,6 +2381,7 @@ DEPENDENCIES:
   - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@55.0.24_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-nat_19c7c739a49a30bdfd8ee2efd90c450c/node_modules/expo-file-system/ios`)"
   - "ExpoFont (from `../../../node_modules/.pnpm/expo-font@55.0.8_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metr_dc9730fac7689cfd5ff0e6ae95f83407/node_modules/expo-font/ios`)"
   - "ExpoGlassEffect (from `../../../node_modules/.pnpm/expo-glass-effect@55.0.11_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-na_275b50f502a4e3bee246ec67dde1d0da/node_modules/expo-glass-effect/ios`)"
+  - "ExpoIap (from `../../../node_modules/.pnpm/expo-iap@5.3.2_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metro-_be6e921ff337e45a90f37c4d45174e22/node_modules/expo-iap/ios`)"
   - "ExpoImage (from `../../../node_modules/.pnpm/expo-image@55.0.10_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+me_cf86bafdc5710cce89069ffc19fe0774/node_modules/expo-image/ios`)"
   - "ExpoImagePicker (from `../../../node_modules/.pnpm/expo-image-picker@55.0.22_expo@55.0.24/node_modules/expo-image-picker/ios`)"
   - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@55.0.8_expo@55.0.24_react@19.2.0/node_modules/expo-keep-awake/ios`)"
@@ -2480,6 +2485,7 @@ SPEC REPOS:
     - libavif
     - libdav1d
     - libwebp
+    - openiap
     - SDWebImage
     - SDWebImageAVIFCoder
     - SDWebImageSVGCoder
@@ -2506,6 +2512,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-font@55.0.8_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metr_dc9730fac7689cfd5ff0e6ae95f83407/node_modules/expo-font/ios"
   ExpoGlassEffect:
     :path: "../../../node_modules/.pnpm/expo-glass-effect@55.0.11_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-na_275b50f502a4e3bee246ec67dde1d0da/node_modules/expo-glass-effect/ios"
+  ExpoIap:
+    :path: "../../../node_modules/.pnpm/expo-iap@5.3.2_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+metro-_be6e921ff337e45a90f37c4d45174e22/node_modules/expo-iap/ios"
   ExpoImage:
     :path: "../../../node_modules/.pnpm/expo-image@55.0.10_expo@55.0.24_react-native@0.83.6_@babel+core@7.29.0_@react-native+me_cf86bafdc5710cce89069ffc19fe0774/node_modules/expo-image/ios"
   ExpoImagePicker:
@@ -2710,6 +2718,7 @@ SPEC CHECKSUMS:
   ExpoFileSystem: b16ad358dff1dd561f561d8ca0bf22cf00ddad40
   ExpoFont: a7e34a75bdfb703fa07a0e87807f836236608c76
   ExpoGlassEffect: 2dedac2fe817f9b02d0dad29ce0aef7afebc5cd4
+  ExpoIap: 5bec33ed10fe55fc761685c9becea2f3526c3beb
   ExpoImage: 74d26278507b0b0d85b1e50562412172603f59eb
   ExpoImagePicker: f82edc16bb8eeb6260c2759b0015afc0ab45a3d0
   ExpoKeepAwake: d0eb7a0719500d2a43fbf29b6f79e84d70c75ebf
@@ -2729,6 +2738,7 @@ SPEC CHECKSUMS:
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
   NitroImage: cdd62812a99c9ccbd578f7cb7d6113717fe5a944
   NitroModules: 7b5ab273abd90ab15d69f4ac1272e34e368051af
+  openiap: 5fd63f4544bd4cc34da1e514f27eba6d3f30eed5
   RCTDeprecation: 9502b5eb8e3c9eb75ff5a333b2c591bab9d91e28
   RCTRequired: 0268a5d86aef1defea2e04289d74fdf3570197c1
   RCTSwiftUI: cff211c5e4d94e491dda240d663b8effd25296d7
@@ -2816,6 +2826,6 @@ SPEC CHECKSUMS:
   Yoga: e41d64347f52d634dd8c2f6bac33f95081959fd3
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: 426496958d6f362be6a69d2bb8f149b28277ccd2
+PODFILE CHECKSUM: 86a695064d279a0909ef2fc92af1069b5859d712
 
 COCOAPODS: 1.16.2
