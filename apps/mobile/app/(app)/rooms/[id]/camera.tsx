@@ -221,6 +221,7 @@ export default function CameraScreen() {
       filePath = (await photo.saveToTemporaryFileAsync()) as string;
       photo.dispose();
     } catch (err: unknown) {
+      console.error('CAPTURE ERROR (diagnostic):', JSON.stringify(err), err);
       setCapturing(false);
       const localId = String(Date.now());
       setUploads((prev) => [
