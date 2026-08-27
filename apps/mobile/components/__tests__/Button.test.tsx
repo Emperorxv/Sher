@@ -3,7 +3,9 @@
  *
  * Verifies:
  * 1. The `dark` variant renders with navy background (#000a22) and white text.
- * 2. Pre-existing variants (primary, secondary, danger, ghost) are unaffected —
+ * 2. The `ghost-dark` variant renders with transparent background and primary text/border
+ *    (for buttons placed on dark card backgrounds, e.g. the Share button on the ink QR card).
+ * 3. Pre-existing variants (primary, secondary, danger, ghost) are unaffected —
  *    their background and foreground colors remain unchanged by the addition of
  *    the new variant.
  */
@@ -25,6 +27,20 @@ describe('Button — variant styles', () => {
     it('renders with white text', () => {
       const { getByText } = render(<Button label="Take photo" variant="dark" />);
       expect(getByText('Take photo')).toHaveStyle({ color: '#FFFFFF' });
+    });
+  });
+
+  // ── ghost-dark variant ───────────────────────────────────────────────────────
+
+  describe('ghost-dark variant (Share button on ink QR card)', () => {
+    it('renders with transparent background', () => {
+      const { getByRole } = render(<Button label="Share" variant="ghost-dark" />);
+      expect(getByRole('button')).toHaveStyle({ backgroundColor: 'transparent' });
+    });
+
+    it('renders with primary (coral) text', () => {
+      const { getByText } = render(<Button label="Share" variant="ghost-dark" />);
+      expect(getByText('Share')).toHaveStyle({ color: colors.primary });
     });
   });
 

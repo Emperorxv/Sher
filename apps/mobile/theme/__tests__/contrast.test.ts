@@ -110,6 +110,12 @@ describe('WCAG AA contrast — §7.5 token pairs', () => {
   // Fog border / disabled state: not checked for text contrast (it's decorative / icon-paired).
   // Verified: disabled button uses fog bg + no text (icon-only) OR pairs with coal text below.
 
+  // ghost-dark button (Share button inside the ink QR card): primary text on ink (5.04:1).
+  // ghost variant uses coal-on-cream (18:1) and must NOT be used on dark backgrounds.
+  it('primary (ghost-dark button label) on ink ≥ 4.5:1', () => {
+    assertAA(colors.primary, colors.ink, 'primary', 'ink (ghost-dark button)');
+  });
+
   // Dark ("Take photo") button: white label on navy bg (~19.5:1).
   it('white (button label) on navy (dark button) ≥ 4.5:1', () => {
     assertAA('#FFFFFF', colors.navy, 'white', 'navy');

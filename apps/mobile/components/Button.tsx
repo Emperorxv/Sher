@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, fonts, fontSizes, radii, minTapTarget } from '../theme';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'dark';
+type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghost-dark' | 'dark';
 
 interface ButtonProps extends Omit<PressableProps, 'style'> {
   label: string;
@@ -17,16 +17,18 @@ interface ButtonProps extends Omit<PressableProps, 'style'> {
 }
 
 // Text color chosen to meet WCAG AA 4.5:1 on each background:
-//   primary  (#FF3B6B) → coal  5.74:1 ✓   (cream would only be 3.27:1 — fails)
+//   primary   (#FF3B6B) → coal  5.74:1 ✓   (cream would only be 3.27:1 — fails)
 //   secondary (#7B2CBF) → cream 7.06:1 ✓
-//   danger   (#E53935) → coal  4.68:1 ✓   (cream would only be 4.01:1 — fails)
-//   ghost    (transparent/cream) → coal 18:1 ✓  border is primary for brand signal
-//   dark     (#000a22 navy) → white 19.5:1 ✓   capture / action button
+//   danger    (#E53935) → coal  4.68:1 ✓   (cream would only be 4.01:1 — fails)
+//   ghost     (transparent/cream) → coal 18:1 ✓  border is primary for brand signal
+//   ghost-dark (transparent/ink card) → primary 5.04:1 ✓  for buttons on dark backgrounds
+//   dark      (#000a22 navy) → white 19.5:1 ✓   capture / action button
 const variantStyles: Record<Variant, { bg: string; fg: string; border?: string }> = {
   primary: { bg: colors.primary, fg: colors.coal },
   secondary: { bg: colors.violet, fg: colors.cream },
   danger: { bg: colors.danger, fg: colors.coal },
   ghost: { bg: 'transparent', fg: colors.coal, border: colors.primary },
+  'ghost-dark': { bg: 'transparent', fg: colors.primary, border: colors.primary },
   dark: { bg: colors.navy, fg: '#FFFFFF' },
 };
 

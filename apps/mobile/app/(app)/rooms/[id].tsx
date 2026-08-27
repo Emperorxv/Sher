@@ -410,7 +410,7 @@ export default function RoomDashboard() {
             <JoinCodeDisplay code={room.joinCode} />
             <Button
               label="Share"
-              variant="ghost"
+              variant="ghost-dark"
               style={styles.shareBtn}
               onPress={() => {
                 void Share.share({ message: buildShareMessage(room.joinCode) });
